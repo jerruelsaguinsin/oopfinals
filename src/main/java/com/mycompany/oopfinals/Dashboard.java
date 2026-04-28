@@ -1,3 +1,5 @@
+package com.mycompany.oopfinals;
+
 import javax.swing.*;
 
 public class Dashboard extends JFrame {

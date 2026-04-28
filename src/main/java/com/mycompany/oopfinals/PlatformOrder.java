@@ -1,3 +1,5 @@
+package com.mycompany.oopfinals;
+
 public class PlatformOrder extends Order {
     private String platform;
 
