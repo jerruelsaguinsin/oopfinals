@@ -28,12 +28,16 @@ public class LoginForm extends JFrame {
 
         ResultSet rs = ps.executeQuery();
 
+       
+        
         if (rs.next()) {
-            JOptionPane.showMessageDialog(this, "Login Success!");
-            new MainMenu();
-            dispose();
-        } else {
-            JOptionPane.showMessageDialog(this, "Invalid login");
+    String username = rs.getString("username");
+    String role = rs.getString("role");
+
+    new MainMenu(username, role);
+    dispose();
+} else {
+    JOptionPane.showMessageDialog(this, "Invalid login");
         }
 
     } catch (Exception ex) {
@@ -51,6 +55,7 @@ public class LoginForm extends JFrame {
         usernameLabel = new javax.swing.JLabel();
         usernameTextField = new javax.swing.JTextField();
         passwordTextField = new javax.swing.JPasswordField();
+        showPasswordCheckBox = new javax.swing.JCheckBox();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setForeground(java.awt.Color.white);
@@ -59,6 +64,7 @@ public class LoginForm extends JFrame {
         jPanel1.setBackground(new java.awt.Color(255, 255, 255));
 
         logInButton.setText("Log In");
+        logInButton.addActionListener(this::logInButtonActionPerformed);
 
         jLabel1.setIcon(new javax.swing.ImageIcon("C:\\Users\\admin\\Downloads\\Untitled design - 2026-04-29T125423.618.png")); // NOI18N
 
@@ -69,6 +75,10 @@ public class LoginForm extends JFrame {
         usernameTextField.addActionListener(this::usernameTextFieldActionPerformed);
 
         passwordTextField.addActionListener(this::passwordTextFieldActionPerformed);
+
+        showPasswordCheckBox.setText("Show Password");
+        showPasswordCheckBox.setContentAreaFilled(false);
+        showPasswordCheckBox.addActionListener(this::showPasswordCheckBoxActionPerformed);
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
@@ -86,9 +96,10 @@ public class LoginForm extends JFrame {
                                 .addComponent(passwordLabel)
                                 .addComponent(usernameLabel)
                                 .addComponent(usernameTextField)
-                                .addComponent(passwordTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 195, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                .addComponent(passwordTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 195, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addComponent(showPasswordCheckBox, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addGap(94, 94, 94)
+                        .addGap(92, 92, 92)
                         .addComponent(logInButton)))
                 .addContainerGap(38, Short.MAX_VALUE))
         );
@@ -105,9 +116,11 @@ public class LoginForm extends JFrame {
                 .addComponent(passwordLabel)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(passwordTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(30, 30, 30)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(showPasswordCheckBox)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 43, Short.MAX_VALUE)
                 .addComponent(logInButton)
-                .addContainerGap(55, Short.MAX_VALUE))
+                .addGap(31, 31, 31))
         );
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -131,6 +144,18 @@ public class LoginForm extends JFrame {
     private void passwordTextFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_passwordTextFieldActionPerformed
         // TODO add your handling code here:
     }//GEN-LAST:event_passwordTextFieldActionPerformed
+
+    private void logInButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_logInButtonActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_logInButtonActionPerformed
+
+    private void showPasswordCheckBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_showPasswordCheckBoxActionPerformed
+       if (showPasswordCheckBox.isSelected()) {
+        passwordTextField.setEchoChar((char) 0); // show text
+    } else {
+        passwordTextField.setEchoChar('•'); // hide text again
+    }
+    }//GEN-LAST:event_showPasswordCheckBoxActionPerformed
 
     /**
      * @param args the command line arguments
@@ -168,6 +193,7 @@ public class LoginForm extends JFrame {
     private javax.swing.JButton logInButton;
     private javax.swing.JLabel passwordLabel;
     private javax.swing.JPasswordField passwordTextField;
+    private javax.swing.JCheckBox showPasswordCheckBox;
     private javax.swing.JLabel usernameLabel;
     private javax.swing.JTextField usernameTextField;
     // End of variables declaration//GEN-END:variables

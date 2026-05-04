@@ -1,20 +1,128 @@
 
 
 package com.mycompany.oopfinals;
-
+import javax.swing.SwingUtilities;
 import java.awt.CardLayout;
+import java.awt.*;
+import java.sql.*;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.*;
+
 
 public class MainMenu extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(MainMenu.class.getName());
  CardLayout cl;
 
-    public MainMenu() {
+ private String loggedUsername;
+private String loggedRole;
+
+
+
+
+private void loadAllUsers() {
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "SELECT id, name, role, status FROM users"
+        );
+
+        ResultSet rs = ps.executeQuery();
+
+        DefaultTableModel model = (DefaultTableModel) allUsersTable.getModel();
+        model.setRowCount(0);
+
+        while (rs.next()) {
+            model.addRow(new Object[]{
+                rs.getInt("id"),
+                rs.getString("name"),
+                rs.getString("role"),
+                rs.getString("status")
+            });
+        }
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}
+
+private boolean hasMoreThanOneActiveAdmin() {
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "SELECT COUNT(*) FROM users WHERE role='admin' AND status='active'"
+        );
+
+        ResultSet rs = ps.executeQuery();
+
+        if (rs.next()) {
+            return rs.getInt(1) > 1;
+        }
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+
+    return false;
+}
+
+private boolean isAdmin() {
+    return "admin".equalsIgnoreCase(loggedRole);
+}
+private void loadCurrentUser() {
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "SELECT id, name, username, password, role FROM users WHERE username=?"
+        );
+
+        ps.setString(1, loggedUsername);
+
+        ResultSet rs = ps.executeQuery();
+
+        DefaultTableModel model = (DefaultTableModel) currentUserTable.getModel();
+        model.setRowCount(0);
+
+        if (rs.next()) {
+            model.addRow(new Object[]{
+                rs.getInt("id"),
+                rs.getString("name"),
+                rs.getString("username"),
+                rs.getString("password"),
+                rs.getString("role")
+            });
+        }
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}
+   public MainMenu(String username, String role) {
     initComponents();
-    cl = (CardLayout)(mainPanel.getLayout());
-    
-    // default screen
+
+    this.loggedUsername = username;
+    this.loggedRole = role;
+
+    cl = (CardLayout) mainPanel.getLayout();
+
+    loadCurrentUser();
+    loadAllUsers();
+
+    // NOW role is valid
+    if (!isAdmin()) {
+        accountsButton.setVisible(false);
+
+        changeRoleButton.setEnabled(false);
+        changeStatusButton.setEnabled(false);
+    }
+
     cl.show(mainPanel, "dashboard");
+
+    setLocationRelativeTo(null);
+    setVisible(true);
 }
 
     /**
@@ -31,27 +139,29 @@ public class MainMenu extends javax.swing.JFrame {
         salesReportButton = new javax.swing.JButton();
         dashboardButton = new javax.swing.JButton();
         accountsButton = new javax.swing.JButton();
-        exitButton = new javax.swing.JButton();
+        logOutButton = new javax.swing.JButton();
+        servicesButton = new javax.swing.JButton();
         mainPanel = new javax.swing.JPanel();
         salesReportPanel = new javax.swing.JPanel();
         jLabel3 = new javax.swing.JLabel();
         accountsPanel = new javax.swing.JPanel();
         jLabel2 = new javax.swing.JLabel();
         jScrollPane2 = new javax.swing.JScrollPane();
-        jTable2 = new javax.swing.JTable();
+        currentUserTable = new javax.swing.JTable();
         jLabel4 = new javax.swing.JLabel();
-        dashboardButton1 = new javax.swing.JButton();
-        dashboardButton2 = new javax.swing.JButton();
+        changePasswordButton = new javax.swing.JButton();
+        changeUsernameButton = new javax.swing.JButton();
         jLabel5 = new javax.swing.JLabel();
         jScrollPane3 = new javax.swing.JScrollPane();
-        jTable3 = new javax.swing.JTable();
-        dashboardButton3 = new javax.swing.JButton();
-        dashboardButton4 = new javax.swing.JButton();
-        dashboardButton5 = new javax.swing.JButton();
+        allUsersTable = new javax.swing.JTable();
+        changeRoleButton = new javax.swing.JButton();
+        changeStatusButton = new javax.swing.JButton();
+        addAccountButton = new javax.swing.JButton();
         dashboardPanel = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
         jTable1 = new javax.swing.JTable();
         jButton6 = new javax.swing.JButton();
+        servicesPanel = new javax.swing.JPanel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -71,9 +181,13 @@ public class MainMenu extends javax.swing.JFrame {
         accountsButton.setText("ACCOUNTS");
         accountsButton.addActionListener(this::accountsButtonActionPerformed);
 
-        exitButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        exitButton.setText("EXIT");
-        exitButton.addActionListener(this::exitButtonActionPerformed);
+        logOutButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        logOutButton.setText("LOG OUT");
+        logOutButton.addActionListener(this::logOutButtonActionPerformed);
+
+        servicesButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        servicesButton.setText("SERVICES");
+        servicesButton.addActionListener(this::servicesButtonActionPerformed);
 
         javax.swing.GroupLayout optionPanelLayout = new javax.swing.GroupLayout(optionPanel);
         optionPanel.setLayout(optionPanelLayout);
@@ -88,9 +202,11 @@ public class MainMenu extends javax.swing.JFrame {
                         .addGap(14, 14, 14)
                         .addGroup(optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(salesReportButton, javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(accountsButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(exitButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                            .addComponent(logOutButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                .addComponent(salesReportButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(accountsButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(servicesButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))))
                 .addContainerGap(25, Short.MAX_VALUE))
         );
         optionPanelLayout.setVerticalGroup(
@@ -101,11 +217,13 @@ public class MainMenu extends javax.swing.JFrame {
                 .addGap(34, 34, 34)
                 .addComponent(dashboardButton, javax.swing.GroupLayout.PREFERRED_SIZE, 27, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
+                .addComponent(servicesButton)
+                .addGap(18, 18, 18)
                 .addComponent(salesReportButton)
                 .addGap(18, 18, 18)
                 .addComponent(accountsButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addComponent(exitButton)
+                .addComponent(logOutButton)
                 .addGap(39, 39, 39))
         );
 
@@ -136,11 +254,8 @@ public class MainMenu extends javax.swing.JFrame {
         jLabel2.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
         jLabel2.setText("ACCOUNTS");
 
-        jTable2.setModel(new javax.swing.table.DefaultTableModel(
+        currentUserTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null},
                 {null, null, null, null, null}
             },
             new String [] {
@@ -150,26 +265,33 @@ public class MainMenu extends javax.swing.JFrame {
             Class[] types = new Class [] {
                 java.lang.Integer.class, java.lang.String.class, java.lang.String.class, java.lang.String.class, java.lang.String.class
             };
+            boolean[] canEdit = new boolean [] {
+                false, false, false, false, false
+            };
 
             public Class getColumnClass(int columnIndex) {
                 return types [columnIndex];
             }
+
+            public boolean isCellEditable(int rowIndex, int columnIndex) {
+                return canEdit [columnIndex];
+            }
         });
-        jScrollPane2.setViewportView(jTable2);
+        jScrollPane2.setViewportView(currentUserTable);
 
         jLabel4.setText("CURRENT ACCOUNT");
 
-        dashboardButton1.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        dashboardButton1.setText("CHANGE PASSWORD");
-        dashboardButton1.addActionListener(this::dashboardButton1ActionPerformed);
+        changePasswordButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
+        changePasswordButton.setText("CHANGE PASSWORD");
+        changePasswordButton.addActionListener(this::changePasswordButtonActionPerformed);
 
-        dashboardButton2.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        dashboardButton2.setText("CHANGE USERNAME");
-        dashboardButton2.addActionListener(this::dashboardButton2ActionPerformed);
+        changeUsernameButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
+        changeUsernameButton.setText("CHANGE USERNAME");
+        changeUsernameButton.addActionListener(this::changeUsernameButtonActionPerformed);
 
         jLabel5.setText("ALL ACCOUNTS");
 
-        jTable3.setModel(new javax.swing.table.DefaultTableModel(
+        allUsersTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
                 {null, null, null, null},
                 {null, null, null, null},
@@ -183,56 +305,61 @@ public class MainMenu extends javax.swing.JFrame {
             Class[] types = new Class [] {
                 java.lang.Integer.class, java.lang.String.class, java.lang.String.class, java.lang.String.class
             };
+            boolean[] canEdit = new boolean [] {
+                false, false, false, false
+            };
 
             public Class getColumnClass(int columnIndex) {
                 return types [columnIndex];
             }
+
+            public boolean isCellEditable(int rowIndex, int columnIndex) {
+                return canEdit [columnIndex];
+            }
         });
-        jScrollPane3.setViewportView(jTable3);
+        jScrollPane3.setViewportView(allUsersTable);
 
-        dashboardButton3.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        dashboardButton3.setText("REMOVE ACCOUNT");
-        dashboardButton3.addActionListener(this::dashboardButton3ActionPerformed);
+        changeRoleButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
+        changeRoleButton.setText("CHANGE ROLE");
+        changeRoleButton.addActionListener(this::changeRoleButtonActionPerformed);
 
-        dashboardButton4.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        dashboardButton4.setText("CHANGE ROLE");
-        dashboardButton4.addActionListener(this::dashboardButton4ActionPerformed);
+        changeStatusButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
+        changeStatusButton.setText("CHANGE STATUS");
+        changeStatusButton.addActionListener(this::changeStatusButtonActionPerformed);
 
-        dashboardButton5.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        dashboardButton5.setText("CHANGE STATUS");
-        dashboardButton5.addActionListener(this::dashboardButton5ActionPerformed);
+        addAccountButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
+        addAccountButton.setText("ADD ACCOUNT");
+        addAccountButton.addActionListener(this::addAccountButtonActionPerformed);
 
         javax.swing.GroupLayout accountsPanelLayout = new javax.swing.GroupLayout(accountsPanel);
         accountsPanel.setLayout(accountsPanelLayout);
         accountsPanelLayout.setHorizontalGroup(
             accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(accountsPanelLayout.createSequentialGroup()
-                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addGroup(accountsPanelLayout.createSequentialGroup()
-                            .addGap(36, 36, 36)
-                            .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                .addComponent(jLabel4)
-                                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 482, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                        .addGroup(accountsPanelLayout.createSequentialGroup()
-                            .addGap(36, 36, 36)
-                            .addComponent(dashboardButton2, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(dashboardButton1, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                    .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addGroup(accountsPanelLayout.createSequentialGroup()
-                            .addComponent(dashboardButton3, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(dashboardButton4, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(dashboardButton5, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 482, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(jLabel5)))
-                .addContainerGap(39, Short.MAX_VALUE))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, accountsPanelLayout.createSequentialGroup()
                 .addGap(0, 0, Short.MAX_VALUE)
                 .addComponent(jLabel2)
                 .addGap(210, 210, 210))
+            .addGroup(accountsPanelLayout.createSequentialGroup()
+                .addGap(36, 36, 36)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addComponent(jLabel4)
+                        .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 482, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGroup(accountsPanelLayout.createSequentialGroup()
+                            .addComponent(changeUsernameButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(changePasswordButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                    .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, accountsPanelLayout.createSequentialGroup()
+                            .addComponent(addAccountButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(changeRoleButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(changeStatusButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGap(65, 65, 65))
+                        .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 482, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(jLabel5)))
+                .addContainerGap(39, Short.MAX_VALUE))
         );
         accountsPanelLayout.setVerticalGroup(
             accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -242,20 +369,20 @@ public class MainMenu extends javax.swing.JFrame {
                 .addGap(27, 27, 27)
                 .addComponent(jLabel4)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 55, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(dashboardButton2)
-                    .addComponent(dashboardButton1))
+                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 49, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(changeUsernameButton)
+                    .addComponent(changePasswordButton))
                 .addGap(34, 34, 34)
                 .addComponent(jLabel5)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 252, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(dashboardButton3)
-                    .addComponent(dashboardButton4)
-                    .addComponent(dashboardButton5))
+                    .addComponent(addAccountButton)
+                    .addComponent(changeStatusButton)
+                    .addComponent(changeRoleButton))
                 .addContainerGap(154, Short.MAX_VALUE))
         );
 
@@ -300,6 +427,19 @@ public class MainMenu extends javax.swing.JFrame {
 
         mainPanel.add(dashboardPanel, "dashboard");
 
+        javax.swing.GroupLayout servicesPanelLayout = new javax.swing.GroupLayout(servicesPanel);
+        servicesPanel.setLayout(servicesPanelLayout);
+        servicesPanelLayout.setHorizontalGroup(
+            servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 557, Short.MAX_VALUE)
+        );
+        servicesPanelLayout.setVerticalGroup(
+            servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 682, Short.MAX_VALUE)
+        );
+
+        mainPanel.add(servicesPanel, "card5");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -330,33 +470,241 @@ cl.show(mainPanel, "dashboard");
         cl.show(mainPanel, "accounts");
     }//GEN-LAST:event_accountsButtonActionPerformed
 
-    private void exitButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_exitButtonActionPerformed
+    private void logOutButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_logOutButtonActionPerformed
         System.exit(0);
-    }//GEN-LAST:event_exitButtonActionPerformed
+    }//GEN-LAST:event_logOutButtonActionPerformed
 
     private void jButton6ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton6ActionPerformed
         // TODO add your handling code here:
     }//GEN-LAST:event_jButton6ActionPerformed
 
-    private void dashboardButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButton1ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_dashboardButton1ActionPerformed
+    private void changePasswordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changePasswordButtonActionPerformed
+    try {
+        String newPass = JOptionPane.showInputDialog("Enter new password:");
+        if (newPass == null || newPass.trim().isEmpty()) return;
 
-    private void dashboardButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButton2ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_dashboardButton2ActionPerformed
+        Connection conn = DBConnection.getConnection();
 
-    private void dashboardButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButton3ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_dashboardButton3ActionPerformed
+        PreparedStatement ps = conn.prepareStatement(
+            "UPDATE users SET password=? WHERE username=?"
+        );
 
-    private void dashboardButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButton4ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_dashboardButton4ActionPerformed
+        ps.setString(1, newPass);
+        ps.setString(2, loggedUsername);
 
-    private void dashboardButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButton5ActionPerformed
+        ps.executeUpdate();
+
+        loadCurrentUser();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    }//GEN-LAST:event_changePasswordButtonActionPerformed
+
+    private void changeUsernameButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeUsernameButtonActionPerformed
+        try {
+        String newUsername = JOptionPane.showInputDialog("Enter new username:");
+        if (newUsername == null || newUsername.trim().isEmpty()) return;
+
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "UPDATE users SET username=? WHERE username=?"
+        );
+
+        ps.setString(1, newUsername);
+        ps.setString(2, loggedUsername);
+
+        ps.executeUpdate();
+
+        loggedUsername = newUsername;
+        loadCurrentUser();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    }//GEN-LAST:event_changeUsernameButtonActionPerformed
+
+    private void changeRoleButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeRoleButtonActionPerformed
+ if (!isAdmin()) return;
+
+    int row = allUsersTable.getSelectedRow();
+    if (row == -1) {
+        JOptionPane.showMessageDialog(this, "Select a user first.");
+        return;
+    }
+
+    int id = (int) allUsersTable.getValueAt(row, 0);
+    String currentRole = allUsersTable.getValueAt(row, 2).toString();
+
+    String[] roles = {"admin", "employee"};
+    JComboBox<String> roleBox = new JComboBox<>(roles);
+
+    int choice = JOptionPane.showConfirmDialog(
+            this,
+            roleBox,
+            "Select New Role",
+            JOptionPane.OK_CANCEL_OPTION
+    );
+
+    if (choice != JOptionPane.OK_OPTION) return;
+
+    String newRole = (String) roleBox.getSelectedItem();
+
+    // ❗ prevent last admin from being demoted
+    if (currentRole.equalsIgnoreCase("admin")
+            && newRole.equalsIgnoreCase("employee")
+            && !hasMoreThanOneActiveAdmin()) {
+
+        JOptionPane.showMessageDialog(this, "Cannot demote the last active admin.");
+        return;
+    }
+
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "UPDATE users SET role=? WHERE id=?"
+        );
+
+        ps.setString(1, newRole);
+        ps.setInt(2, id);
+
+        ps.executeUpdate();
+
+        loadAllUsers();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    }//GEN-LAST:event_changeRoleButtonActionPerformed
+
+    private void changeStatusButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeStatusButtonActionPerformed
+if (!isAdmin()) return;
+
+    int row = allUsersTable.getSelectedRow();
+    if (row == -1) {
+        JOptionPane.showMessageDialog(this, "Select a user first.");
+        return;
+    }
+
+    int id = (int) allUsersTable.getValueAt(row, 0);
+    String role = allUsersTable.getValueAt(row, 2).toString();
+    String currentStatus = allUsersTable.getValueAt(row, 3).toString();
+
+    String[] statuses = {"active", "inactive"};
+    JComboBox<String> statusBox = new JComboBox<>(statuses);
+
+    int choice = JOptionPane.showConfirmDialog(
+            this,
+            statusBox,
+            "Select New Status",
+            JOptionPane.OK_CANCEL_OPTION
+    );
+
+    if (choice != JOptionPane.OK_OPTION) return;
+
+    String newStatus = (String) statusBox.getSelectedItem();
+
+    // ❗ prevent last active admin from being deactivated
+    if (role.equalsIgnoreCase("admin")
+            && currentStatus.equalsIgnoreCase("active")
+            && newStatus.equalsIgnoreCase("inactive")
+            && !hasMoreThanOneActiveAdmin()) {
+
+        JOptionPane.showMessageDialog(this, "Cannot deactivate the last active admin.");
+        return;
+    }
+
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "UPDATE users SET status=? WHERE id=?"
+        );
+
+        ps.setString(1, newStatus);
+        ps.setInt(2, id);
+
+        ps.executeUpdate();
+
+        loadAllUsers();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    }//GEN-LAST:event_changeStatusButtonActionPerformed
+
+    private void addAccountButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addAccountButtonActionPerformed
+ if (!isAdmin()) {
+        JOptionPane.showMessageDialog(this, "Only admins can add accounts.");
+        return;
+    }
+
+    try {
+        String name = JOptionPane.showInputDialog("Enter name:");
+        if (name == null) return;
+
+        String username = JOptionPane.showInputDialog("Enter username:");
+        if (username == null) return;
+
+        String password = JOptionPane.showInputDialog("Enter password:");
+        if (password == null) return;
+
+        String[] roles = {"admin", "employee"};
+JComboBox<String> roleBox = new JComboBox<>(roles);
+
+int roleChoice = JOptionPane.showConfirmDialog(
+        this,
+        roleBox,
+        "Select Role",
+        JOptionPane.OK_CANCEL_OPTION
+);
+
+if (roleChoice != JOptionPane.OK_OPTION) return;
+
+String role = (String) roleBox.getSelectedItem();
+
+        // ✅ STATUS DROPDOWN
+        String[] statuses = {"active", "inactive"};
+        JComboBox<String> statusBox = new JComboBox<>(statuses);
+
+        int statusChoice = JOptionPane.showConfirmDialog(
+                this,
+                statusBox,
+                "Select Status",
+                JOptionPane.OK_CANCEL_OPTION
+        );
+
+        if (statusChoice != JOptionPane.OK_OPTION) return;
+
+        String status = (String) statusBox.getSelectedItem();
+
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "INSERT INTO users (name, username, password, role, status) VALUES (?, ?, ?, ?, ?)"
+        );
+
+        ps.setString(1, name);
+        ps.setString(2, username);
+        ps.setString(3, password);
+        ps.setString(4, role);
+        ps.setString(5, status);
+
+        ps.executeUpdate();
+
+        JOptionPane.showMessageDialog(this, "Account added successfully!");
+        loadAllUsers();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    }//GEN-LAST:event_addAccountButtonActionPerformed
+
+    private void servicesButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_servicesButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_dashboardButton5ActionPerformed
+    }//GEN-LAST:event_servicesButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -380,20 +728,24 @@ cl.show(mainPanel, "dashboard");
         //</editor-fold>
 
         /* Create and display the form */
-        java.awt.EventQueue.invokeLater(() -> new MainMenu().setVisible(true));
+        java.awt.EventQueue.invokeLater(() -> {
+    new LoginForm().setVisible(true);
+});
+        
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton accountsButton;
     private javax.swing.JPanel accountsPanel;
+    private javax.swing.JButton addAccountButton;
+    private javax.swing.JTable allUsersTable;
+    private javax.swing.JButton changePasswordButton;
+    private javax.swing.JButton changeRoleButton;
+    private javax.swing.JButton changeStatusButton;
+    private javax.swing.JButton changeUsernameButton;
+    private javax.swing.JTable currentUserTable;
     private javax.swing.JButton dashboardButton;
-    private javax.swing.JButton dashboardButton1;
-    private javax.swing.JButton dashboardButton2;
-    private javax.swing.JButton dashboardButton3;
-    private javax.swing.JButton dashboardButton4;
-    private javax.swing.JButton dashboardButton5;
     private javax.swing.JPanel dashboardPanel;
-    private javax.swing.JButton exitButton;
     private javax.swing.JButton jButton6;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
@@ -404,11 +756,12 @@ cl.show(mainPanel, "dashboard");
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JTable jTable1;
-    private javax.swing.JTable jTable2;
-    private javax.swing.JTable jTable3;
+    private javax.swing.JButton logOutButton;
     private javax.swing.JPanel mainPanel;
     private javax.swing.JPanel optionPanel;
     private javax.swing.JButton salesReportButton;
     private javax.swing.JPanel salesReportPanel;
+    private javax.swing.JButton servicesButton;
+    private javax.swing.JPanel servicesPanel;
     // End of variables declaration//GEN-END:variables
 }
