@@ -1,6 +1,6 @@
 package com.mycompany.oopfinals;
 
-
+import java.security.MessageDigest;
 import javax.swing.*;
 import java.awt.*;
 import java.sql.*;
@@ -9,39 +9,65 @@ public class LoginForm extends JFrame {
 
     public LoginForm() {
     initComponents();
-    logInButton.addActionListener(e -> login());
 
     setLocationRelativeTo(null); // optional but recommended
     setVisible(true); // IMPORTANT
 }
 
+private String hashPassword(String password) throws Exception {
+    MessageDigest md = MessageDigest.getInstance("SHA-256");
+    byte[] bytes = md.digest(password.getBytes("UTF-8"));
+
+    StringBuilder sb = new StringBuilder();
+
+    for (byte b : bytes) {
+        sb.append(String.format("%02x", b));
+    }
+
+    return sb.toString();
+}
+    
     private void login() {
     try {
+        String usernameInput = usernameTextField.getText().trim();
+        String passwordInput = new String(passwordTextField.getPassword());
+
+        if (usernameInput.isEmpty() || passwordInput.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Enter username and password.");
+            return;
+        }
+
+        String hashedPassword = hashPassword(passwordInput);
+
         Connection conn = DBConnection.getConnection();
 
         PreparedStatement ps = conn.prepareStatement(
-            "SELECT * FROM users WHERE username=? AND password=?"
+            "SELECT * FROM users WHERE username=? AND password=? AND status='active'"
         );
 
-        ps.setString(1, usernameTextField.getText());
-        ps.setString(2, passwordTextField.getText());
+        ps.setString(1, usernameInput);
+        ps.setString(2, hashedPassword);
 
         ResultSet rs = ps.executeQuery();
 
-       
-        
         if (rs.next()) {
-    String username = rs.getString("username");
-    String role = rs.getString("role");
+            String username = rs.getString("username");
+            String role = rs.getString("role");
 
-    new MainMenu(username, role);
-    dispose();
-} else {
-    JOptionPane.showMessageDialog(this, "Invalid login");
+            new MainMenu(username, role);
+            dispose();
+        } else {
+            JOptionPane.showMessageDialog(
+                this,
+                "Invalid username or password.\nIf you forgot your password, please contact your admin.",
+                "Login Failed",
+                JOptionPane.WARNING_MESSAGE
+            );
         }
 
     } catch (Exception ex) {
         ex.printStackTrace();
+        JOptionPane.showMessageDialog(this, "Login error. Please contact your admin.");
     }
 }
     @SuppressWarnings("unchecked")
@@ -138,15 +164,15 @@ public class LoginForm extends JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void usernameTextFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_usernameTextFieldActionPerformed
-        // TODO add your handling code here:
+        passwordTextField.requestFocus();
     }//GEN-LAST:event_usernameTextFieldActionPerformed
 
     private void passwordTextFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_passwordTextFieldActionPerformed
-        // TODO add your handling code here:
+        login();
     }//GEN-LAST:event_passwordTextFieldActionPerformed
 
     private void logInButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_logInButtonActionPerformed
-        // TODO add your handling code here:
+        login();
     }//GEN-LAST:event_logInButtonActionPerformed
 
     private void showPasswordCheckBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_showPasswordCheckBoxActionPerformed
