@@ -1,6 +1,5 @@
 package com.mycompany.oopfinals;
 
-import java.security.MessageDigest;
 import javax.swing.*;
 import java.awt.*;
 import java.sql.*;
@@ -14,20 +13,8 @@ public class LoginForm extends JFrame {
     setVisible(true); // IMPORTANT
 }
 
-private String hashPassword(String password) throws Exception {
-    MessageDigest md = MessageDigest.getInstance("SHA-256");
-    byte[] bytes = md.digest(password.getBytes("UTF-8"));
-
-    StringBuilder sb = new StringBuilder();
-
-    for (byte b : bytes) {
-        sb.append(String.format("%02x", b));
-    }
-
-    return sb.toString();
-}
     
-    private void login() {
+private void login() {
     try {
         String usernameInput = usernameTextField.getText().trim();
         String passwordInput = new String(passwordTextField.getPassword());
@@ -37,16 +24,14 @@ private String hashPassword(String password) throws Exception {
             return;
         }
 
-        String hashedPassword = hashPassword(passwordInput);
-
         Connection conn = DBConnection.getConnection();
 
-        PreparedStatement ps = conn.prepareStatement(
-            "SELECT * FROM users WHERE username=? AND password=? AND status='active'"
-        );
+PreparedStatement ps = conn.prepareStatement(
+    "SELECT * FROM users WHERE username=? AND password=? AND status='active'"
+);
 
-        ps.setString(1, usernameInput);
-        ps.setString(2, hashedPassword);
+ps.setString(1, usernameInput);
+ps.setString(2, passwordInput);
 
         ResultSet rs = ps.executeQuery();
 
@@ -89,19 +74,27 @@ private String hashPassword(String password) throws Exception {
 
         jPanel1.setBackground(new java.awt.Color(255, 255, 255));
 
+        logInButton.setBackground(new java.awt.Color(0, 0, 0));
+        logInButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        logInButton.setForeground(new java.awt.Color(255, 255, 255));
         logInButton.setText("Log In");
         logInButton.addActionListener(this::logInButtonActionPerformed);
 
-        jLabel1.setIcon(new javax.swing.ImageIcon("C:\\Users\\admin\\Downloads\\Untitled design - 2026-04-29T125423.618.png")); // NOI18N
+        jLabel1.setIcon(new javax.swing.ImageIcon("C:\\Users\\admin\\Downloads\\barodisenologoblack.png")); // NOI18N
 
+        passwordLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
         passwordLabel.setText("Password");
 
+        usernameLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
         usernameLabel.setText("Username");
 
+        usernameTextField.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
         usernameTextField.addActionListener(this::usernameTextFieldActionPerformed);
 
+        passwordTextField.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
         passwordTextField.addActionListener(this::passwordTextFieldActionPerformed);
 
+        showPasswordCheckBox.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
         showPasswordCheckBox.setText("Show Password");
         showPasswordCheckBox.setContentAreaFilled(false);
         showPasswordCheckBox.addActionListener(this::showPasswordCheckBoxActionPerformed);
@@ -144,7 +137,7 @@ private String hashPassword(String password) throws Exception {
                 .addComponent(passwordTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(showPasswordCheckBox)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 43, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 25, Short.MAX_VALUE)
                 .addComponent(logInButton)
                 .addGap(31, 31, 31))
         );
@@ -193,12 +186,7 @@ private String hashPassword(String password) throws Exception {
          * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
          */
         try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
+            javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getCrossPlatformLookAndFeelClassName());
         } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException ex) {
             ex.printStackTrace();
         }

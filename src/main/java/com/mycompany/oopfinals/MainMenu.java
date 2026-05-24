@@ -6,7 +6,6 @@ import java.awt.*;
 import java.sql.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.*;
-import java.security.MessageDigest;
 
 public class MainMenu extends javax.swing.JFrame {
     
@@ -15,6 +14,116 @@ public class MainMenu extends javax.swing.JFrame {
 
  private String loggedUsername;
 private String loggedRole;
+
+private SalesGraphPanel salesGraphPanel;
+
+private String formatOrderCode(int orderId) {
+    return String.format("ORD-%06d", orderId);
+}
+
+private int parseOrderCode(Object value) {
+    String text = String.valueOf(value).trim();
+    if (text.toUpperCase().startsWith("ORD-")) {
+        text = text.substring(4);
+    }
+    return Integer.parseInt(text);
+}
+
+private void styleFlatComponents(Container container) {
+    for (Component component : container.getComponents()) {
+        if (component instanceof JButton button) {
+            Color background = button.getBackground();
+            button.setUI(new javax.swing.plaf.basic.BasicButtonUI());
+            button.setFocusPainted(false);
+            button.setBackground(background);
+
+            if (button.isContentAreaFilled() && background != null
+                    && background.getRed() > 220 && background.getGreen() > 220 && background.getBlue() > 220) {
+                button.setBackground(Color.WHITE);
+                button.setOpaque(true);
+                button.setBorderPainted(true);
+            }
+        } else if (component instanceof JScrollPane scrollPane) {
+            scrollPane.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI());
+            scrollPane.getHorizontalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI());
+        }
+
+        if (component instanceof Container child) {
+            styleFlatComponents(child);
+        }
+    }
+}
+
+private boolean isLastActiveAdmin(int userId) {
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "SELECT COUNT(*) FROM users " +
+            "WHERE role='admin' AND status='active'"
+        );
+
+        ResultSet rs = ps.executeQuery();
+
+        if (rs.next()) {
+            int activeAdmins = rs.getInt(1);
+
+            PreparedStatement currentUserPs = conn.prepareStatement(
+                "SELECT role, status FROM users WHERE id=?"
+            );
+
+            currentUserPs.setInt(1, userId);
+
+            ResultSet currentRs = currentUserPs.executeQuery();
+
+            if (currentRs.next()) {
+                String role = currentRs.getString("role");
+                String status = currentRs.getString("status");
+
+                return activeAdmins == 1
+                        && role.equalsIgnoreCase("admin")
+                        && status.equalsIgnoreCase("active");
+            }
+        }
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+
+    return false;
+}
+
+private void lockTableSizes() {
+    mainPanel.setPreferredSize(new Dimension(893, 733));
+    mainPanel.setMinimumSize(new Dimension(893, 733));
+    dashboardPanel.setPreferredSize(new Dimension(893, 733));
+    ordersPanel.setPreferredSize(new Dimension(893, 733));
+    catalogPanel.setPreferredSize(new Dimension(893, 733));
+    accountsPanel.setPreferredSize(new Dimension(893, 733));
+    activityLogPanel.setPreferredSize(new Dimension(893, 733));
+    salesReportPanel.setPreferredSize(new Dimension(893, 733));
+
+    allUsersTable.setRowHeight(24);
+    allUsersTable.setFillsViewportHeight(true);
+    jScrollPane3.setPreferredSize(new Dimension(843, 371));
+    jScrollPane3.setMinimumSize(new Dimension(843, 371));
+
+    jTable1.setRowHeight(24);
+    jTable1.setFillsViewportHeight(true);
+    jScrollPane1.setPreferredSize(new Dimension(842, 513));
+    jScrollPane1.setMinimumSize(new Dimension(842, 513));
+
+    catalogTable.setRowHeight(24);
+    catalogTable.setFillsViewportHeight(true);
+    jScrollPane4.setPreferredSize(new Dimension(845, 548));
+    jScrollPane4.setMinimumSize(new Dimension(845, 548));
+
+    activityLogTable.setRowHeight(24);
+    activityLogTable.setFillsViewportHeight(true);
+    jScrollPane5.setPreferredSize(new Dimension(656, 647));
+    jScrollPane5.setMinimumSize(new Dimension(656, 647));
+}
+
 
 private void saveOrderWithItems(String customerName, java.util.List<OrderLine> lines,
         String platform, String paymentMethod, String deliveryMethod, String status) throws Exception {
@@ -100,18 +209,6 @@ orderPs.setString(7, status);
     }
 }
 
-private String hashPassword(String password) throws Exception {
-    MessageDigest md = MessageDigest.getInstance("SHA-256");
-    byte[] bytes = md.digest(password.getBytes("UTF-8"));
-
-    StringBuilder sb = new StringBuilder();
-
-    for (byte b : bytes) {
-        sb.append(String.format("%02x", b));
-    }
-
-    return sb.toString();
-}
 
 private void addLog(String action, String details) {
     try {
@@ -370,11 +467,11 @@ private void applyOrderStatusColors() {
 }
 private void addDetailRow(JPanel panel, GridBagConstraints gbc, int row, String label, Object value) {
     JLabel labelComponent = new JLabel(label);
-    labelComponent.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+    labelComponent.setFont(new Font("Poppins", Font.PLAIN, 12));
     labelComponent.setForeground(new Color(120, 120, 120));
 
     JLabel valueComponent = new JLabel(value == null ? "-" : value.toString());
-    valueComponent.setFont(new Font("Segoe UI", Font.BOLD, 14));
+    valueComponent.setFont(new Font("Poppins", Font.BOLD, 14));
     valueComponent.setForeground(new Color(35, 35, 35));
 
     gbc.gridx = 0;
@@ -388,13 +485,61 @@ private void addDetailRow(JPanel panel, GridBagConstraints gbc, int row, String 
     panel.add(valueComponent, gbc);
 }
 
-private void loadActivityLogs() {
+private void loadActivityUsers() {
     try {
         Connection conn = DBConnection.getConnection();
 
-        PreparedStatement ps = conn.prepareStatement(
-            "SELECT id, username, role, action, details, created_at FROM activity_logs ORDER BY id DESC"
+        DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+        model.addElement("All Users");
+
+        PreparedStatement ps = conn.prepareStatement("SELECT username FROM users ORDER BY username");
+        ResultSet rs = ps.executeQuery();
+
+        while (rs.next()) {
+            model.addElement(rs.getString("username"));
+        }
+
+        userComboBox.setModel(model);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}
+
+private void loadActivityLogs() {
+    try {
+        Connection conn = DBConnection.getConnection();
+        StringBuilder sql = new StringBuilder(
+            "SELECT id, username, role, action, details, created_at FROM activity_logs WHERE 1=1"
         );
+        java.util.List<Object> params = new java.util.ArrayList<>();
+
+        java.util.Date startDate = activityStartDateChooser.getDate();
+        java.util.Date endDate = activityEndDateChooser.getDate();
+        String selectedUser = userComboBox.getSelectedItem() == null ? "All Users" : userComboBox.getSelectedItem().toString();
+
+        if (startDate != null) {
+            sql.append(" AND DATE(created_at) >= ?");
+            params.add(new java.sql.Date(startDate.getTime()));
+        }
+
+        if (endDate != null) {
+            sql.append(" AND DATE(created_at) <= ?");
+            params.add(new java.sql.Date(endDate.getTime()));
+        }
+
+        if (!"All Users".equals(selectedUser)) {
+            sql.append(" AND username = ?");
+            params.add(selectedUser);
+        }
+
+        sql.append(" ORDER BY id DESC");
+
+        PreparedStatement ps = conn.prepareStatement(sql.toString());
+
+        for (int i = 0; i < params.size(); i++) {
+            ps.setObject(i + 1, params.get(i));
+        }
 
         ResultSet rs = ps.executeQuery();
 
@@ -418,6 +563,89 @@ private void loadActivityLogs() {
     }
 }
 
+private void resetActivityLogFilters() {
+    activityStartDateChooser.setDate(null);
+    activityEndDateChooser.setDate(null);
+    userComboBox.setSelectedItem("All Users");
+    loadActivityLogs();
+}
+
+private String buildReceiptText(int orderId, int row, DefaultTableModel itemModel) {
+    StringBuilder receipt = new StringBuilder();
+    receipt.append("        BARODISENO\n");
+    receipt.append("        ORDER RECEIPT\n");
+    receipt.append("--------------------------------\n");
+    receipt.append("Order #: ").append(formatOrderCode(orderId)).append("\n");
+    receipt.append("Customer: ").append(jTable1.getValueAt(row, 1)).append("\n");
+    receipt.append("Platform: ").append(jTable1.getValueAt(row, 4)).append("\n");
+    receipt.append("Payment: ").append(jTable1.getValueAt(row, 5)).append("\n");
+    receipt.append("Delivery: ").append(jTable1.getValueAt(row, 6)).append("\n");
+    receipt.append("Status: ").append(jTable1.getValueAt(row, 7)).append("\n");
+    receipt.append("Date: ").append(jTable1.getValueAt(row, 8)).append("\n");
+    receipt.append("--------------------------------\n");
+    receipt.append(String.format("%-14s %3s %10s\n", "Item", "Qty", "Subtotal"));
+    receipt.append("--------------------------------\n");
+
+    for (int i = 0; i < itemModel.getRowCount(); i++) {
+        String item = String.valueOf(itemModel.getValueAt(i, 0));
+        int quantity = Integer.parseInt(String.valueOf(itemModel.getValueAt(i, 3)));
+        double subtotal = Double.parseDouble(String.valueOf(itemModel.getValueAt(i, 4)));
+
+        if (item.length() > 14) {
+            item = item.substring(0, 14);
+        }
+
+        receipt.append(String.format("%-14s %3d PHP %6.2f\n", item, quantity, subtotal));
+    }
+
+    double total = Double.parseDouble(String.valueOf(jTable1.getValueAt(row, 3)));
+    double vat = total * 12 / 112;
+    double netOfVat = total - vat;
+
+    receipt.append("--------------------------------\n");
+    receipt.append(String.format("VATable Sales:      PHP %6.2f\n", netOfVat));
+    receipt.append(String.format("VAT 12%% included:   PHP %6.2f\n", vat));
+    receipt.append(String.format("TOTAL:              PHP %6.2f\n", total));
+    receipt.append("--------------------------------\n");
+    receipt.append("Thank you for your order!\n");
+
+    return receipt.toString();
+}
+
+private void showReceiptDialog(int orderId, int row, DefaultTableModel itemModel) {
+    JDialog receiptDialog = new JDialog(this, "Receipt", true);
+    receiptDialog.setSize(380, 560);
+    receiptDialog.setLocationRelativeTo(this);
+    receiptDialog.setLayout(new BorderLayout());
+
+    JTextArea receiptArea = new JTextArea(buildReceiptText(orderId, row, itemModel));
+    receiptArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+    receiptArea.setEditable(false);
+    receiptArea.setMargin(new Insets(14, 14, 14, 14));
+
+    JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+    JButton printButton = new JButton("Print");
+    JButton closeButton = new JButton("Close");
+
+    printButton.addActionListener(e -> {
+        try {
+            receiptArea.print();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(receiptDialog, "Failed to print receipt.");
+        }
+    });
+
+    closeButton.addActionListener(e -> receiptDialog.dispose());
+    footer.add(printButton);
+    footer.add(closeButton);
+
+    receiptDialog.add(new JScrollPane(receiptArea), BorderLayout.CENTER);
+    receiptDialog.add(footer, BorderLayout.SOUTH);
+    styleFlatComponents(receiptDialog);
+    receiptDialog.setVisible(true);
+}
+
 private void viewActivityLogDetails() {
     int row = activityLogTable.getSelectedRow();
 
@@ -436,10 +664,10 @@ private void viewActivityLogDetails() {
     headerPanel.setBorder(BorderFactory.createEmptyBorder(18, 20, 14, 20));
 
     JLabel titleLabel = new JLabel("Log #" + activityLogTable.getValueAt(row, 0));
-    titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
+    titleLabel.setFont(new Font("Poppins", Font.BOLD, 22));
 
     JLabel actionLabel = new JLabel(String.valueOf(activityLogTable.getValueAt(row, 3)));
-    actionLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+    actionLabel.setFont(new Font("Poppins", Font.BOLD, 12));
     actionLabel.setOpaque(true);
     actionLabel.setBackground(new Color(220, 235, 255));
     actionLabel.setForeground(new Color(20, 70, 130));
@@ -474,6 +702,7 @@ private void viewActivityLogDetails() {
     dialog.add(bodyPanel, BorderLayout.CENTER);
     dialog.add(footerPanel, BorderLayout.SOUTH);
 
+    styleFlatComponents(dialog);
     dialog.setVisible(true);
 }
 
@@ -502,7 +731,7 @@ private void loadAllUsers() {
         Connection conn = DBConnection.getConnection();
 
         PreparedStatement ps = conn.prepareStatement(
-            "SELECT id, name, role, status FROM users"
+            "SELECT id, name, username, role, status FROM users"
         );
 
         ResultSet rs = ps.executeQuery();
@@ -514,6 +743,7 @@ private void loadAllUsers() {
             model.addRow(new Object[]{
                 rs.getInt("id"),
                 rs.getString("name"),
+                rs.getString("username"),
                 rs.getString("role"),
                 rs.getString("status")
             });
@@ -544,7 +774,7 @@ private void loadOrders() {
 
         while (rs.next()) {
             model.addRow(new Object[]{
-    rs.getInt("id"),
+    formatOrderCode(rs.getInt("id")),
     rs.getString("customer_name"),
     rs.getInt("item_count") + " item(s)",
     rs.getDouble("total_price"),
@@ -606,6 +836,98 @@ private java.util.List<OrderItem> loadOrderItems() {
     return items;
 }
 
+private void loadDashboard() {
+    try {
+        Connection conn = DBConnection.getConnection();
+
+        PreparedStatement ps = conn.prepareStatement(
+            "SELECT " +
+            "COUNT(*) AS total_orders, " +
+            "SUM(CASE WHEN TRIM(status)='Pending' THEN 1 ELSE 0 END) AS pending_orders, " +
+            "SUM(CASE WHEN TRIM(status)='Processing' THEN 1 ELSE 0 END) AS processing_orders, " +
+            "SUM(CASE WHEN TRIM(status)='Completed' THEN 1 ELSE 0 END) AS completed_orders " +
+            "FROM orders"
+        );
+
+        ResultSet rs = ps.executeQuery();
+
+        if (rs.next()) {
+            totalOrdersNumberLabel4.setText(String.valueOf(rs.getInt("total_orders")));
+            pendingOrdersNumberLabel.setText(String.valueOf(rs.getInt("pending_orders")));
+            processingOrdersNumberLabel.setText(String.valueOf(rs.getInt("processing_orders")));
+            completedOrdersNumberLabel.setText(String.valueOf(rs.getInt("completed_orders")));
+        }
+
+        catalogStockTextArea.setText(buildCatalogStockSummary(conn));
+
+        if (salesGraphPanel != null) {
+            salesGraphPanel.loadGraphData();
+        }
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(this, "Failed to load dashboard.");
+    }
+}
+
+private String buildCatalogStockSummary(Connection conn) throws Exception {
+    StringBuilder summary = new StringBuilder();
+
+    PreparedStatement countsPs = conn.prepareStatement(
+        "SELECT " +
+        "SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active_products, " +
+        "SUM(CASE WHEN status<>'active' THEN 1 ELSE 0 END) AS inactive_products, " +
+        "SUM(CASE WHEN stock=0 THEN 1 ELSE 0 END) AS out_of_stock, " +
+        "SUM(CASE WHEN stock BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS low_stock, " +
+        "COALESCE(SUM(stock), 0) AS total_units " +
+        "FROM products"
+    );
+
+    ResultSet counts = countsPs.executeQuery();
+    if (counts.next()) {
+        summary.append("Active products: ").append(counts.getInt("active_products")).append("\n");
+        summary.append("Inactive products: ").append(counts.getInt("inactive_products")).append("\n");
+        summary.append("Total product units: ").append(counts.getInt("total_units")).append("\n");
+        summary.append("Out of stock: ").append(counts.getInt("out_of_stock")).append("\n");
+        summary.append("Low stock: ").append(counts.getInt("low_stock")).append("\n\n");
+    }
+
+    PreparedStatement servicesPs = conn.prepareStatement(
+        "SELECT " +
+        "SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active_services, " +
+        "SUM(CASE WHEN status<>'active' THEN 1 ELSE 0 END) AS inactive_services " +
+        "FROM services"
+    );
+
+    ResultSet services = servicesPs.executeQuery();
+    if (services.next()) {
+        summary.append("Active services: ").append(services.getInt("active_services")).append("\n");
+        summary.append("Inactive services: ").append(services.getInt("inactive_services")).append("\n\n");
+    }
+
+    PreparedStatement stockPs = conn.prepareStatement(
+        "SELECT name, stock FROM products WHERE status='active' AND stock <= 5 ORDER BY stock ASC, name"
+    );
+
+    ResultSet stockRs = stockPs.executeQuery();
+    summary.append("Needs attention:\n");
+    boolean hasAttentionItems = false;
+
+    while (stockRs.next()) {
+        hasAttentionItems = true;
+        int stock = stockRs.getInt("stock");
+        summary.append("- ")
+                .append(stockRs.getString("name"))
+                .append(stock == 0 ? " is out of stock" : " has only " + stock + " left")
+                .append("\n");
+    }
+
+    if (!hasAttentionItems) {
+        summary.append("- No low stock items.");
+    }
+
+    return summary.toString();
+}
 
 private void loadCatalog() {
     try {
@@ -683,24 +1005,24 @@ private void loadCurrentUser() {
         Connection conn = DBConnection.getConnection();
 
         PreparedStatement ps = conn.prepareStatement(
-            "SELECT id, name, username, password, role FROM users WHERE username=?"
+            "SELECT id, name, username, role FROM users WHERE username=?"
         );
 
         ps.setString(1, loggedUsername);
 
         ResultSet rs = ps.executeQuery();
 
-        DefaultTableModel model = (DefaultTableModel) currentUserTable.getModel();
-        model.setRowCount(0);
-
         if (rs.next()) {
-            model.addRow(new Object[]{
-                rs.getInt("id"),
-                rs.getString("name"),
-                rs.getString("username"),
-                rs.getString("password"),
-                rs.getString("role")
-            });
+            String displayName = rs.getString("name");
+            if (displayName == null || displayName.trim().isEmpty()) {
+                displayName = rs.getString("username");
+            }
+
+            accountNameButton.setText(displayName);
+            actualIdLabel.setText(String.valueOf(rs.getInt("id")));
+            actualNameLabel.setText(displayName);
+            actualUsernameLabel.setText(rs.getString("username"));
+            actualRoleLabel.setText(rs.getString("role"));
         }
 
     } catch (Exception e) {
@@ -709,6 +1031,51 @@ private void loadCurrentUser() {
 }
    public MainMenu(String username, String role) {
     initComponents();
+    styleFlatComponents(this);
+    lockTableSizes();
+    
+    cl = (CardLayout) mainPanel.getLayout();
+
+    accountNameButton.setText("");
+
+salesGraphPanel = new SalesGraphPanel();
+
+actualsalesAnalysisPanel.removeAll();
+actualsalesAnalysisPanel.setLayout(new BorderLayout());
+actualsalesAnalysisPanel.setPreferredSize(new Dimension(464, 210));
+actualsalesAnalysisPanel.setMinimumSize(new Dimension(360, 170));
+actualsalesAnalysisPanel.add(salesGraphPanel, BorderLayout.CENTER);
+
+catalogStockTextArea.setEditable(false);
+catalogStockTextArea.setFont(new Font("Poppins", Font.PLAIN, 12));
+catalogStockTextArea.setLineWrap(true);
+catalogStockTextArea.setWrapStyleWord(true);
+catalogStockTextArea.setBackground(Color.WHITE);
+jScrollPane2.setPreferredSize(new Dimension(279, 253));
+jScrollPane2.setMinimumSize(new Dimension(240, 220));
+    
+    jTable1.getTableHeader().setFont(
+    new java.awt.Font("Poppins", java.awt.Font.BOLD, 12)
+);
+    
+    
+    allUsersTable.getTableHeader().setFont(
+    new java.awt.Font("Poppins", java.awt.Font.BOLD, 12)
+);
+    
+     catalogTable.getTableHeader().setFont(
+    new java.awt.Font("Poppins", java.awt.Font.BOLD, 12)
+);
+     
+     activityLogTable.getTableHeader().setFont(
+    new java.awt.Font("Poppins", java.awt.Font.BOLD, 12)
+);
+    
+       salesReportPanel.setLayout(new java.awt.BorderLayout());
+    salesReportPanel.removeAll();
+    salesReportPanel.add(new SalesReportPanel(), java.awt.BorderLayout.CENTER);
+    salesReportPanel.revalidate();
+    salesReportPanel.repaint();
 
     applyOrderStatusColors();
     this.loggedUsername = username;
@@ -719,24 +1086,28 @@ private void loadCurrentUser() {
 
 loadCurrentUser();
 loadAllUsers();
+loadActivityUsers();
+resetLogButton.addActionListener(e -> resetActivityLogFilters());
 loadOrders();
 loadCatalog();
 loadActivityLogs();
 addTableDoubleClickActions();
+loadDashboard();
 
  if (!isAdmin()) {
     accountsButton.setVisible(false);
     activityLogButton.setVisible(false);
 
-    changeRoleButton.setEnabled(false);
-    changeStatusButton.setEnabled(false);
+
     changeUsernameAllAccountsButton.setEnabled(false);
-    changePasswordAllAccountsButton.setEnabled(false);
+
 }   
 
 
     cl.show(mainPanel, "dashboard");
 
+    revalidate();
+    pack();
     setLocationRelativeTo(null);
     setVisible(true);
 }
@@ -756,27 +1127,54 @@ addTableDoubleClickActions();
         dashboardButton = new javax.swing.JButton();
         accountsButton = new javax.swing.JButton();
         logOutButton = new javax.swing.JButton();
-        servicesButton = new javax.swing.JButton();
+        catalogButton = new javax.swing.JButton();
         activityLogButton = new javax.swing.JButton();
+        ordersButton = new javax.swing.JButton();
         mainPanel = new javax.swing.JPanel();
+        dashboardPanel = new javax.swing.JPanel();
+        jPanel5 = new javax.swing.JPanel();
+        totalOrdersPanel4 = new javax.swing.JPanel();
+        totalOrdersLabel4 = new javax.swing.JLabel();
+        totalOrdersNumberLabel4 = new javax.swing.JLabel();
+        pendingPanel = new javax.swing.JPanel();
+        pendingLabel = new javax.swing.JLabel();
+        pendingOrdersNumberLabel = new javax.swing.JLabel();
+        processingPanel = new javax.swing.JPanel();
+        processingLabel = new javax.swing.JLabel();
+        processingOrdersNumberLabel = new javax.swing.JLabel();
+        completedPanel = new javax.swing.JPanel();
+        completedLabel = new javax.swing.JLabel();
+        completedOrdersNumberLabel = new javax.swing.JLabel();
+        completedLabel1 = new javax.swing.JLabel();
+        dashboardCreateOrderButton = new javax.swing.JButton();
+        graphContainerPanel = new javax.swing.JPanel();
+        completedLabel2 = new javax.swing.JLabel();
+        actualsalesAnalysisPanel = new javax.swing.JPanel();
+        totalOrdersLabel5 = new javax.swing.JLabel();
+        accountNameButton = new javax.swing.JButton();
+        graphContainerPanel1 = new javax.swing.JPanel();
+        completedLabel3 = new javax.swing.JLabel();
+        jScrollPane2 = new javax.swing.JScrollPane();
+        catalogStockTextArea = new javax.swing.JTextArea();
+        jLabel9 = new javax.swing.JLabel();
         salesReportPanel = new javax.swing.JPanel();
-        jLabel3 = new javax.swing.JLabel();
         accountsPanel = new javax.swing.JPanel();
         jLabel2 = new javax.swing.JLabel();
-        jScrollPane2 = new javax.swing.JScrollPane();
-        currentUserTable = new javax.swing.JTable();
         jLabel4 = new javax.swing.JLabel();
-        changePasswordButton = new javax.swing.JButton();
-        changeUsernameButton = new javax.swing.JButton();
         jLabel5 = new javax.swing.JLabel();
         jScrollPane3 = new javax.swing.JScrollPane();
         allUsersTable = new javax.swing.JTable();
-        changeRoleButton = new javax.swing.JButton();
-        changeStatusButton = new javax.swing.JButton();
         addAccountButton = new javax.swing.JButton();
-        changePasswordAllAccountsButton = new javax.swing.JButton();
         changeUsernameAllAccountsButton = new javax.swing.JButton();
-        dashboardPanel = new javax.swing.JPanel();
+        idLabel = new javax.swing.JLabel();
+        nameLabel = new javax.swing.JLabel();
+        usernameLabel = new javax.swing.JLabel();
+        roleLabel = new javax.swing.JLabel();
+        actualIdLabel = new javax.swing.JLabel();
+        actualNameLabel = new javax.swing.JLabel();
+        actualUsernameLabel = new javax.swing.JLabel();
+        actualRoleLabel = new javax.swing.JLabel();
+        ordersPanel = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
         jTable1 = new javax.swing.JTable();
         createOrderButton = new javax.swing.JButton();
@@ -785,7 +1183,7 @@ addTableDoubleClickActions();
         cancelOrderButton = new javax.swing.JButton();
         viewDetailsButton = new javax.swing.JButton();
         editOrderButton = new javax.swing.JButton();
-        servicesPanel = new javax.swing.JPanel();
+        catalogPanel = new javax.swing.JPanel();
         jScrollPane4 = new javax.swing.JScrollPane();
         catalogTable = new javax.swing.JTable();
         addProductServiceButton = new javax.swing.JButton();
@@ -795,56 +1193,110 @@ addTableDoubleClickActions();
         jLabel8 = new javax.swing.JLabel();
         jScrollPane5 = new javax.swing.JScrollPane();
         activityLogTable = new javax.swing.JTable();
+        activityStartDateChooser = new com.toedter.calendar.JDateChooser();
+        jLabel10 = new javax.swing.JLabel();
+        jLabel11 = new javax.swing.JLabel();
+        activityEndDateChooser = new com.toedter.calendar.JDateChooser();
+        userComboBox = new javax.swing.JComboBox<>();
+        jLabel12 = new javax.swing.JLabel();
+        generateLogButton = new javax.swing.JButton();
+        resetLogButton = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
+        setResizable(false);
 
-        optionPanel.setBackground(new java.awt.Color(255, 255, 255));
+        optionPanel.setBackground(new java.awt.Color(27, 25, 24));
+        optionPanel.setForeground(new java.awt.Color(27, 25, 24));
 
-        jLabel1.setIcon(new javax.swing.ImageIcon("C:\\Users\\admin\\Downloads\\Untitled design - 2026-04-29T125423.618.png")); // NOI18N
+        jLabel1.setIcon(new javax.swing.ImageIcon("C:\\Users\\admin\\Downloads\\barodisenologowhite.png")); // NOI18N
 
-        salesReportButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        salesReportButton.setText("SALES REPORT");
+        salesReportButton.setBackground(new java.awt.Color(27, 25, 24));
+        salesReportButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        salesReportButton.setForeground(new java.awt.Color(255, 255, 255));
+        salesReportButton.setText("Sales Report");
+        salesReportButton.setBorderPainted(false);
+        salesReportButton.setContentAreaFilled(false);
+        salesReportButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         salesReportButton.addActionListener(this::salesReportButtonActionPerformed);
 
-        dashboardButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        dashboardButton.setText("DASHBOARD");
+        dashboardButton.setBackground(new java.awt.Color(27, 25, 24));
+        dashboardButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        dashboardButton.setForeground(new java.awt.Color(255, 255, 255));
+        dashboardButton.setText("Dashboard");
+        dashboardButton.setBorderPainted(false);
+        dashboardButton.setContentAreaFilled(false);
+        dashboardButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        dashboardButton.setMaximumSize(new java.awt.Dimension(88, 29));
+        dashboardButton.setMinimumSize(new java.awt.Dimension(88, 29));
+        dashboardButton.setPreferredSize(new java.awt.Dimension(88, 29));
         dashboardButton.addActionListener(this::dashboardButtonActionPerformed);
 
-        accountsButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        accountsButton.setText("ACCOUNTS");
+        accountsButton.setBackground(new java.awt.Color(27, 25, 24));
+        accountsButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        accountsButton.setForeground(new java.awt.Color(255, 255, 255));
+        accountsButton.setText("Accounts");
+        accountsButton.setBorderPainted(false);
+        accountsButton.setContentAreaFilled(false);
+        accountsButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         accountsButton.addActionListener(this::accountsButtonActionPerformed);
 
-        logOutButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        logOutButton.setText("LOG OUT");
+        logOutButton.setBackground(new java.awt.Color(27, 25, 24));
+        logOutButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        logOutButton.setForeground(new java.awt.Color(255, 255, 255));
+        logOutButton.setText("Log Out");
+        logOutButton.setBorderPainted(false);
+        logOutButton.setContentAreaFilled(false);
+        logOutButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         logOutButton.addActionListener(this::logOutButtonActionPerformed);
 
-        servicesButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        servicesButton.setText("SERVICES");
-        servicesButton.addActionListener(this::servicesButtonActionPerformed);
+        catalogButton.setBackground(new java.awt.Color(27, 25, 24));
+        catalogButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        catalogButton.setForeground(new java.awt.Color(255, 255, 255));
+        catalogButton.setText("Catalog");
+        catalogButton.setBorderPainted(false);
+        catalogButton.setContentAreaFilled(false);
+        catalogButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        catalogButton.addActionListener(this::catalogButtonActionPerformed);
 
-        activityLogButton.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        activityLogButton.setText("ACTIVITY LOG");
+        activityLogButton.setBackground(new java.awt.Color(27, 25, 24));
+        activityLogButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        activityLogButton.setForeground(new java.awt.Color(255, 255, 255));
+        activityLogButton.setText("Activity Log");
+        activityLogButton.setBorderPainted(false);
+        activityLogButton.setContentAreaFilled(false);
+        activityLogButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         activityLogButton.addActionListener(this::activityLogButtonActionPerformed);
+
+        ordersButton.setBackground(new java.awt.Color(27, 25, 24));
+        ordersButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        ordersButton.setForeground(new java.awt.Color(255, 255, 255));
+        ordersButton.setText("Orders");
+        ordersButton.setBorderPainted(false);
+        ordersButton.setContentAreaFilled(false);
+        ordersButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        ordersButton.setMaximumSize(new java.awt.Dimension(88, 29));
+        ordersButton.setMinimumSize(new java.awt.Dimension(88, 29));
+        ordersButton.setPreferredSize(new java.awt.Dimension(88, 29));
+        ordersButton.addActionListener(this::ordersButtonActionPerformed);
 
         javax.swing.GroupLayout optionPanelLayout = new javax.swing.GroupLayout(optionPanel);
         optionPanel.setLayout(optionPanelLayout);
         optionPanelLayout.setHorizontalGroup(
             optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(optionPanelLayout.createSequentialGroup()
+                .addGap(14, 14, 14)
                 .addGroup(optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addGroup(optionPanelLayout.createSequentialGroup()
-                        .addContainerGap()
-                        .addComponent(dashboardButton, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, optionPanelLayout.createSequentialGroup()
-                        .addGap(14, 14, 14)
-                        .addGroup(optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(logOutButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                .addComponent(salesReportButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(servicesButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(dashboardButton, javax.swing.GroupLayout.PREFERRED_SIZE, 116, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(logOutButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(ordersButton, javax.swing.GroupLayout.PREFERRED_SIZE, 116, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(optionPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                                 .addComponent(accountsButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(activityLogButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))))
+                                .addComponent(activityLogButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(salesReportButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(catalogButton, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))))
                 .addContainerGap(25, Short.MAX_VALUE))
         );
         optionPanelLayout.setVerticalGroup(
@@ -852,10 +1304,12 @@ addTableDoubleClickActions();
             .addGroup(optionPanelLayout.createSequentialGroup()
                 .addGap(16, 16, 16)
                 .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 107, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(34, 34, 34)
-                .addComponent(dashboardButton, javax.swing.GroupLayout.PREFERRED_SIZE, 27, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(32, 32, 32)
+                .addComponent(dashboardButton, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(servicesButton)
+                .addComponent(ordersButton, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addComponent(catalogButton)
                 .addGap(18, 18, 18)
                 .addComponent(salesReportButton)
                 .addGap(18, 18, 18)
@@ -869,41 +1323,349 @@ addTableDoubleClickActions();
 
         mainPanel.setLayout(new java.awt.CardLayout());
 
-        jLabel3.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
-        jLabel3.setText("SALES REPORT");
+        jPanel5.setBackground(new java.awt.Color(255, 255, 255));
+        jPanel5.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        totalOrdersPanel4.setBackground(new java.awt.Color(255, 255, 255));
+        totalOrdersPanel4.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        totalOrdersLabel4.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        totalOrdersLabel4.setText("Total Orders");
+
+        totalOrdersNumberLabel4.setFont(new java.awt.Font("Poppins", 1, 40)); // NOI18N
+        totalOrdersNumberLabel4.setText("43");
+
+        javax.swing.GroupLayout totalOrdersPanel4Layout = new javax.swing.GroupLayout(totalOrdersPanel4);
+        totalOrdersPanel4.setLayout(totalOrdersPanel4Layout);
+        totalOrdersPanel4Layout.setHorizontalGroup(
+            totalOrdersPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(totalOrdersPanel4Layout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addGroup(totalOrdersPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(totalOrdersNumberLabel4, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(totalOrdersLabel4))
+                .addContainerGap(46, Short.MAX_VALUE))
+        );
+        totalOrdersPanel4Layout.setVerticalGroup(
+            totalOrdersPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(totalOrdersPanel4Layout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addComponent(totalOrdersLabel4)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(totalOrdersNumberLabel4)
+                .addContainerGap(28, Short.MAX_VALUE))
+        );
+
+        pendingPanel.setBackground(new java.awt.Color(255, 255, 255));
+        pendingPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        pendingLabel.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        pendingLabel.setText("Pending");
+
+        pendingOrdersNumberLabel.setFont(new java.awt.Font("Poppins", 1, 40)); // NOI18N
+        pendingOrdersNumberLabel.setText("3");
+
+        javax.swing.GroupLayout pendingPanelLayout = new javax.swing.GroupLayout(pendingPanel);
+        pendingPanel.setLayout(pendingPanelLayout);
+        pendingPanelLayout.setHorizontalGroup(
+            pendingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(pendingPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addGroup(pendingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(pendingOrdersNumberLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(pendingLabel))
+                .addContainerGap(61, Short.MAX_VALUE))
+        );
+        pendingPanelLayout.setVerticalGroup(
+            pendingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(pendingPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addComponent(pendingLabel)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(pendingOrdersNumberLabel)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+
+        processingPanel.setBackground(new java.awt.Color(255, 255, 255));
+        processingPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        processingLabel.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        processingLabel.setText("Processing");
+
+        processingOrdersNumberLabel.setFont(new java.awt.Font("Poppins", 1, 40)); // NOI18N
+        processingOrdersNumberLabel.setText("12");
+
+        javax.swing.GroupLayout processingPanelLayout = new javax.swing.GroupLayout(processingPanel);
+        processingPanel.setLayout(processingPanelLayout);
+        processingPanelLayout.setHorizontalGroup(
+            processingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(processingPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addGroup(processingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(processingOrdersNumberLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 132, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(processingLabel))
+                .addContainerGap(49, Short.MAX_VALUE))
+        );
+        processingPanelLayout.setVerticalGroup(
+            processingPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(processingPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addComponent(processingLabel)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(processingOrdersNumberLabel)
+                .addContainerGap(28, Short.MAX_VALUE))
+        );
+
+        completedPanel.setBackground(new java.awt.Color(255, 255, 255));
+        completedPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        completedLabel.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        completedLabel.setText("Completed");
+
+        completedOrdersNumberLabel.setFont(new java.awt.Font("Poppins", 1, 40)); // NOI18N
+        completedOrdersNumberLabel.setText("30");
+
+        javax.swing.GroupLayout completedPanelLayout = new javax.swing.GroupLayout(completedPanel);
+        completedPanel.setLayout(completedPanelLayout);
+        completedPanelLayout.setHorizontalGroup(
+            completedPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(completedPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addGroup(completedPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(completedOrdersNumberLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(completedLabel))
+                .addContainerGap(46, Short.MAX_VALUE))
+        );
+        completedPanelLayout.setVerticalGroup(
+            completedPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(completedPanelLayout.createSequentialGroup()
+                .addGap(10, 10, 10)
+                .addComponent(completedLabel)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(completedOrdersNumberLabel)
+                .addContainerGap(28, Short.MAX_VALUE))
+        );
+
+        completedLabel1.setFont(new java.awt.Font("Poppins", 0, 18)); // NOI18N
+        completedLabel1.setText("Orders");
+
+        dashboardCreateOrderButton.setBackground(new java.awt.Color(27, 25, 24));
+        dashboardCreateOrderButton.setFont(new java.awt.Font("Poppins", 0, 14)); // NOI18N
+        dashboardCreateOrderButton.setForeground(new java.awt.Color(255, 255, 255));
+        dashboardCreateOrderButton.setText("+ Create Order ");
+        dashboardCreateOrderButton.setBorderPainted(false);
+        dashboardCreateOrderButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        dashboardCreateOrderButton.setMaximumSize(new java.awt.Dimension(88, 29));
+        dashboardCreateOrderButton.setMinimumSize(new java.awt.Dimension(88, 29));
+        dashboardCreateOrderButton.setPreferredSize(new java.awt.Dimension(88, 29));
+        dashboardCreateOrderButton.addActionListener(this::dashboardCreateOrderButtonActionPerformed);
+
+        javax.swing.GroupLayout jPanel5Layout = new javax.swing.GroupLayout(jPanel5);
+        jPanel5.setLayout(jPanel5Layout);
+        jPanel5Layout.setHorizontalGroup(
+            jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel5Layout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(jPanel5Layout.createSequentialGroup()
+                        .addComponent(completedLabel1)
+                        .addGap(18, 18, 18)
+                        .addComponent(dashboardCreateOrderButton, javax.swing.GroupLayout.PREFERRED_SIZE, 146, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPanel5Layout.createSequentialGroup()
+                        .addComponent(totalOrdersPanel4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(completedPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(processingPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(pendingPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(21, Short.MAX_VALUE))
+        );
+        jPanel5Layout.setVerticalGroup(
+            jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel5Layout.createSequentialGroup()
+                .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel5Layout.createSequentialGroup()
+                        .addGap(21, 21, 21)
+                        .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(completedLabel1)
+                            .addComponent(dashboardCreateOrderButton, javax.swing.GroupLayout.PREFERRED_SIZE, 28, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(22, 22, 22)
+                        .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(totalOrdersPanel4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(completedPanel, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                    .addGroup(jPanel5Layout.createSequentialGroup()
+                        .addContainerGap()
+                        .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(processingPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(pendingPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                .addContainerGap(24, Short.MAX_VALUE))
+        );
+
+        graphContainerPanel.setBackground(new java.awt.Color(255, 255, 255));
+        graphContainerPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        completedLabel2.setFont(new java.awt.Font("Poppins", 0, 18)); // NOI18N
+        completedLabel2.setText("Sales Analysis");
+
+        actualsalesAnalysisPanel.setBackground(new java.awt.Color(255, 255, 255));
+        actualsalesAnalysisPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        javax.swing.GroupLayout actualsalesAnalysisPanelLayout = new javax.swing.GroupLayout(actualsalesAnalysisPanel);
+        actualsalesAnalysisPanel.setLayout(actualsalesAnalysisPanelLayout);
+        actualsalesAnalysisPanelLayout.setHorizontalGroup(
+            actualsalesAnalysisPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 472, Short.MAX_VALUE)
+        );
+        actualsalesAnalysisPanelLayout.setVerticalGroup(
+            actualsalesAnalysisPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGap(0, 251, Short.MAX_VALUE)
+        );
+
+        totalOrdersLabel5.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        totalOrdersLabel5.setText("(within the last 7 days)");
+
+        javax.swing.GroupLayout graphContainerPanelLayout = new javax.swing.GroupLayout(graphContainerPanel);
+        graphContainerPanel.setLayout(graphContainerPanelLayout);
+        graphContainerPanelLayout.setHorizontalGroup(
+            graphContainerPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(graphContainerPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(graphContainerPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(actualsalesAnalysisPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(graphContainerPanelLayout.createSequentialGroup()
+                        .addComponent(completedLabel2)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(totalOrdersLabel5)))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+        graphContainerPanelLayout.setVerticalGroup(
+            graphContainerPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(graphContainerPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(graphContainerPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(completedLabel2)
+                    .addComponent(totalOrdersLabel5))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(actualsalesAnalysisPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(21, 21, 21))
+        );
+
+        accountNameButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        accountNameButton.setText("(name)");
+        accountNameButton.setBorderPainted(false);
+        accountNameButton.setContentAreaFilled(false);
+        accountNameButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        accountNameButton.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+        accountNameButton.setMargin(new java.awt.Insets(2, 14, 3, 0));
+        accountNameButton.addActionListener(this::accountNameButtonActionPerformed);
+
+        graphContainerPanel1.setBackground(new java.awt.Color(255, 255, 255));
+        graphContainerPanel1.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(204, 204, 204)));
+
+        completedLabel3.setFont(new java.awt.Font("Poppins", 0, 18)); // NOI18N
+        completedLabel3.setText("Catalog Stock");
+
+        catalogStockTextArea.setColumns(20);
+        catalogStockTextArea.setRows(5);
+        jScrollPane2.setViewportView(catalogStockTextArea);
+
+        javax.swing.GroupLayout graphContainerPanel1Layout = new javax.swing.GroupLayout(graphContainerPanel1);
+        graphContainerPanel1.setLayout(graphContainerPanel1Layout);
+        graphContainerPanel1Layout.setHorizontalGroup(
+            graphContainerPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(graphContainerPanel1Layout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(graphContainerPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(completedLabel3)
+                    .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 279, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(21, Short.MAX_VALUE))
+        );
+        graphContainerPanel1Layout.setVerticalGroup(
+            graphContainerPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(graphContainerPanel1Layout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addComponent(completedLabel3)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 253, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+
+        jLabel9.setFont(new java.awt.Font("Poppins", 1, 24)); // NOI18N
+        jLabel9.setText("DASHBOARD");
+
+        javax.swing.GroupLayout dashboardPanelLayout = new javax.swing.GroupLayout(dashboardPanel);
+        dashboardPanel.setLayout(dashboardPanelLayout);
+        dashboardPanelLayout.setHorizontalGroup(
+            dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(dashboardPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(dashboardPanelLayout.createSequentialGroup()
+                        .addComponent(graphContainerPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(graphContainerPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jPanel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addGroup(dashboardPanelLayout.createSequentialGroup()
+                        .addComponent(jLabel9)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(accountNameButton, javax.swing.GroupLayout.PREFERRED_SIZE, 157, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addGap(21, 21, 21))
+        );
+        dashboardPanelLayout.setVerticalGroup(
+            dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(dashboardPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jLabel9)
+                    .addComponent(accountNameButton))
+                .addGap(21, 21, 21)
+                .addComponent(jPanel5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(graphContainerPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(graphContainerPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addContainerGap(48, Short.MAX_VALUE))
+        );
+
+        mainPanel.add(dashboardPanel, "dashboard");
 
         javax.swing.GroupLayout salesReportPanelLayout = new javax.swing.GroupLayout(salesReportPanel);
         salesReportPanel.setLayout(salesReportPanelLayout);
         salesReportPanelLayout.setHorizontalGroup(
             salesReportPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(salesReportPanelLayout.createSequentialGroup()
-                .addGap(200, 200, 200)
-                .addComponent(jLabel3)
-                .addContainerGap(525, Short.MAX_VALUE))
+            .addGap(0, 894, Short.MAX_VALUE)
         );
         salesReportPanelLayout.setVerticalGroup(
             salesReportPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(salesReportPanelLayout.createSequentialGroup()
-                .addGap(28, 28, 28)
-                .addComponent(jLabel3)
-                .addContainerGap(622, Short.MAX_VALUE))
+            .addGap(0, 703, Short.MAX_VALUE)
         );
 
         mainPanel.add(salesReportPanel, "salesReport");
 
-        jLabel2.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        jLabel2.setFont(new java.awt.Font("Poppins", 1, 24)); // NOI18N
         jLabel2.setText("ACCOUNTS");
 
-        currentUserTable.setModel(new javax.swing.table.DefaultTableModel(
+        jLabel4.setFont(new java.awt.Font("Poppins", 1, 14)); // NOI18N
+        jLabel4.setText("CURRENT ACCOUNT");
+
+        jLabel5.setFont(new java.awt.Font("Poppins", 1, 14)); // NOI18N
+        jLabel5.setText("ALL ACCOUNTS");
+
+        allUsersTable.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        allUsersTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
+                {null, null, null, null, null},
+                {null, null, null, null, null},
+                {null, null, null, null, null},
                 {null, null, null, null, null}
             },
             new String [] {
-                "ID", "Name", "Username", "Password", "Role"
+                "ID", "Name", "Username", "Role", "Status"
             }
         ) {
             Class[] types = new Class [] {
-                java.lang.Integer.class, java.lang.String.class, java.lang.String.class, java.lang.String.class, java.lang.String.class
+                java.lang.Integer.class, java.lang.String.class, java.lang.Object.class, java.lang.String.class, java.lang.String.class
             };
             boolean[] canEdit = new boolean [] {
                 false, false, false, false, false
@@ -917,125 +1679,113 @@ addTableDoubleClickActions();
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane2.setViewportView(currentUserTable);
-
-        jLabel4.setText("CURRENT ACCOUNT");
-
-        changePasswordButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changePasswordButton.setText("CHANGE PASSWORD");
-        changePasswordButton.addActionListener(this::changePasswordButtonActionPerformed);
-
-        changeUsernameButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changeUsernameButton.setText("CHANGE USERNAME");
-        changeUsernameButton.addActionListener(this::changeUsernameButtonActionPerformed);
-
-        jLabel5.setText("ALL ACCOUNTS");
-
-        allUsersTable.setModel(new javax.swing.table.DefaultTableModel(
-            new Object [][] {
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null},
-                {null, null, null, null}
-            },
-            new String [] {
-                "ID", "Name", "Role", "Status"
-            }
-        ) {
-            Class[] types = new Class [] {
-                java.lang.Integer.class, java.lang.String.class, java.lang.String.class, java.lang.String.class
-            };
-            boolean[] canEdit = new boolean [] {
-                false, false, false, false
-            };
-
-            public Class getColumnClass(int columnIndex) {
-                return types [columnIndex];
-            }
-
-            public boolean isCellEditable(int rowIndex, int columnIndex) {
-                return canEdit [columnIndex];
-            }
-        });
         jScrollPane3.setViewportView(allUsersTable);
 
-        changeRoleButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changeRoleButton.setText("CHANGE ROLE");
-        changeRoleButton.addActionListener(this::changeRoleButtonActionPerformed);
-
-        changeStatusButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changeStatusButton.setText("CHANGE STATUS");
-        changeStatusButton.addActionListener(this::changeStatusButtonActionPerformed);
-
-        addAccountButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        addAccountButton.setText("ADD ACCOUNT");
+        addAccountButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        addAccountButton.setText("Add Account");
+        addAccountButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         addAccountButton.addActionListener(this::addAccountButtonActionPerformed);
 
-        changePasswordAllAccountsButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changePasswordAllAccountsButton.setText("CHANGE PASSWORD");
-        changePasswordAllAccountsButton.addActionListener(this::changePasswordAllAccountsButtonActionPerformed);
-
-        changeUsernameAllAccountsButton.setFont(new java.awt.Font("Segoe UI", 0, 10)); // NOI18N
-        changeUsernameAllAccountsButton.setText("CHANGE USERNAME");
+        changeUsernameAllAccountsButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        changeUsernameAllAccountsButton.setText("Edit Account");
+        changeUsernameAllAccountsButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         changeUsernameAllAccountsButton.addActionListener(this::changeUsernameAllAccountsButtonActionPerformed);
+
+        idLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
+        idLabel.setText("ID:");
+
+        nameLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
+        nameLabel.setText("Name:");
+
+        usernameLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
+        usernameLabel.setText("Username:");
+
+        roleLabel.setFont(new java.awt.Font("Poppins", 1, 12)); // NOI18N
+        roleLabel.setText("Role:");
+
+        actualIdLabel.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        actualIdLabel.setText("(id)");
+
+        actualNameLabel.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        actualNameLabel.setText("(name)");
+
+        actualUsernameLabel.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        actualUsernameLabel.setText("(username)");
+
+        actualRoleLabel.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        actualRoleLabel.setText("(role)");
 
         javax.swing.GroupLayout accountsPanelLayout = new javax.swing.GroupLayout(accountsPanel);
         accountsPanel.setLayout(accountsPanelLayout);
         accountsPanelLayout.setHorizontalGroup(
             accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(accountsPanelLayout.createSequentialGroup()
-                .addGap(36, 36, 36)
-                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jLabel4)
+                .addGap(21, 21, 21)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(accountsPanelLayout.createSequentialGroup()
-                        .addComponent(changeUsernameButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(roleLabel)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(changePasswordButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(actualRoleLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 221, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(accountsPanelLayout.createSequentialGroup()
+                        .addComponent(usernameLabel)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(actualUsernameLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 221, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jLabel4)
                     .addComponent(jLabel5)
                     .addComponent(jLabel2)
+                    .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                        .addGroup(accountsPanelLayout.createSequentialGroup()
+                            .addComponent(idLabel)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(actualIdLabel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                        .addGroup(accountsPanelLayout.createSequentialGroup()
+                            .addComponent(nameLabel)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(actualNameLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 207, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addGroup(accountsPanelLayout.createSequentialGroup()
-                        .addComponent(addAccountButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(changeRoleButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(changeStatusButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(changeUsernameAllAccountsButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(changePasswordAllAccountsButton, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 819, Short.MAX_VALUE)
-                    .addComponent(jScrollPane3))
-                .addContainerGap(37, Short.MAX_VALUE))
+                        .addComponent(addAccountButton, javax.swing.GroupLayout.PREFERRED_SIZE, 146, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(changeUsernameAllAccountsButton, javax.swing.GroupLayout.PREFERRED_SIZE, 146, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 852, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(21, Short.MAX_VALUE))
         );
         accountsPanelLayout.setVerticalGroup(
             accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(accountsPanelLayout.createSequentialGroup()
-                .addGap(27, 27, 27)
+                .addGap(21, 21, 21)
                 .addComponent(jLabel2)
                 .addGap(18, 18, 18)
                 .addComponent(jLabel4)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 49, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(idLabel)
+                    .addComponent(actualIdLabel))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(nameLabel)
+                    .addComponent(actualNameLabel))
+                .addGap(6, 6, 6)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(usernameLabel)
+                    .addComponent(actualUsernameLabel))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(roleLabel)
+                    .addComponent(actualRoleLabel))
+                .addGap(31, 31, 31)
+                .addComponent(jLabel5)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 328, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(changeUsernameButton)
-                    .addComponent(changePasswordButton))
-                .addGap(34, 34, 34)
-                .addComponent(jLabel5)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jScrollPane3, javax.swing.GroupLayout.DEFAULT_SIZE, 366, Short.MAX_VALUE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(accountsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(addAccountButton)
-                    .addComponent(changeRoleButton)
-                    .addComponent(changeStatusButton)
-                    .addComponent(changePasswordAllAccountsButton)
-                    .addComponent(changeUsernameAllAccountsButton))
-                .addGap(34, 34, 34))
+                    .addComponent(changeUsernameAllAccountsButton)
+                    .addComponent(addAccountButton))
+                .addContainerGap(74, Short.MAX_VALUE))
         );
 
         mainPanel.add(accountsPanel, "accounts");
 
+        jTable1.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
         jTable1.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
                 {null, null, null, null, null, null, null, null, null, null},
@@ -1057,65 +1807,77 @@ addTableDoubleClickActions();
         });
         jScrollPane1.setViewportView(jTable1);
 
-        createOrderButton.setText("CREATE ORDER");
+        createOrderButton.setBackground(new java.awt.Color(27, 25, 24));
+        createOrderButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        createOrderButton.setForeground(new java.awt.Color(255, 255, 255));
+        createOrderButton.setText("Create Order");
+        createOrderButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         createOrderButton.addActionListener(this::createOrderButtonActionPerformed);
 
-        jLabel6.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
-        jLabel6.setText("DASHBOARD");
+        jLabel6.setFont(new java.awt.Font("Poppins", 1, 24)); // NOI18N
+        jLabel6.setText("ORDERS");
 
-        updateStatusButton.setText("UPDATE STATUS");
+        updateStatusButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        updateStatusButton.setText("Update Status");
+        updateStatusButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         updateStatusButton.addActionListener(this::updateStatusButtonActionPerformed);
 
-        cancelOrderButton.setText("CANCEL ORDER");
+        cancelOrderButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        cancelOrderButton.setText("Cancel Order");
+        cancelOrderButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         cancelOrderButton.addActionListener(this::cancelOrderButtonActionPerformed);
 
-        viewDetailsButton.setText("VIEW DETAILS");
+        viewDetailsButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        viewDetailsButton.setText("View Details");
+        viewDetailsButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         viewDetailsButton.addActionListener(this::viewDetailsButtonActionPerformed);
 
-        editOrderButton.setText("EDIT ORDER");
+        editOrderButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        editOrderButton.setText("Edit Order");
+        editOrderButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         editOrderButton.addActionListener(this::editOrderButtonActionPerformed);
 
-        javax.swing.GroupLayout dashboardPanelLayout = new javax.swing.GroupLayout(dashboardPanel);
-        dashboardPanel.setLayout(dashboardPanelLayout);
-        dashboardPanelLayout.setHorizontalGroup(
-            dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(dashboardPanelLayout.createSequentialGroup()
-                .addGap(19, 19, 19)
-                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+        javax.swing.GroupLayout ordersPanelLayout = new javax.swing.GroupLayout(ordersPanel);
+        ordersPanel.setLayout(ordersPanelLayout);
+        ordersPanelLayout.setHorizontalGroup(
+            ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(ordersPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
+                .addGroup(ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel6)
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 853, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(dashboardPanelLayout.createSequentialGroup()
-                        .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                    .addGroup(ordersPanelLayout.createSequentialGroup()
+                        .addGroup(ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
                             .addComponent(updateStatusButton, javax.swing.GroupLayout.DEFAULT_SIZE, 150, Short.MAX_VALUE)
                             .addComponent(createOrderButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                        .addGroup(ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(editOrderButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(viewDetailsButton, javax.swing.GroupLayout.DEFAULT_SIZE, 150, Short.MAX_VALUE))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addComponent(cancelOrderButton, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(20, Short.MAX_VALUE))
+                        .addComponent(cancelOrderButton, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 842, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(31, Short.MAX_VALUE))
         );
-        dashboardPanelLayout.setVerticalGroup(
-            dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, dashboardPanelLayout.createSequentialGroup()
+        ordersPanelLayout.setVerticalGroup(
+            ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, ordersPanelLayout.createSequentialGroup()
                 .addGap(21, 21, 21)
                 .addComponent(jLabel6)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                .addGroup(ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(createOrderButton)
                     .addComponent(cancelOrderButton)
                     .addComponent(editOrderButton))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(dashboardPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(updateStatusButton)
-                    .addComponent(viewDetailsButton))
+                .addGroup(ordersPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(viewDetailsButton)
+                    .addComponent(updateStatusButton))
                 .addGap(18, 18, 18)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 524, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(17, Short.MAX_VALUE))
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 513, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(38, Short.MAX_VALUE))
         );
 
-        mainPanel.add(dashboardPanel, "dashboard");
+        mainPanel.add(ordersPanel, "orders");
 
         catalogTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -1138,49 +1900,55 @@ addTableDoubleClickActions();
         });
         jScrollPane4.setViewportView(catalogTable);
 
-        addProductServiceButton.setText("ADD PRODUCT/SERVICE");
+        addProductServiceButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        addProductServiceButton.setText("Add Product/Service");
+        addProductServiceButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         addProductServiceButton.addActionListener(this::addProductServiceButtonActionPerformed);
 
-        editProductServiceButton.setText("EDIT PRODUCT/SERVICE");
+        editProductServiceButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        editProductServiceButton.setText("Edit Product/Service");
+        editProductServiceButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         editProductServiceButton.addActionListener(this::editProductServiceButtonActionPerformed);
 
-        jLabel7.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
-        jLabel7.setText("SERVICES");
+        jLabel7.setFont(new java.awt.Font("Poppins", 1, 24)); // NOI18N
+        jLabel7.setText("CATALOG");
 
-        javax.swing.GroupLayout servicesPanelLayout = new javax.swing.GroupLayout(servicesPanel);
-        servicesPanel.setLayout(servicesPanelLayout);
-        servicesPanelLayout.setHorizontalGroup(
-            servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(servicesPanelLayout.createSequentialGroup()
+        javax.swing.GroupLayout catalogPanelLayout = new javax.swing.GroupLayout(catalogPanel);
+        catalogPanel.setLayout(catalogPanelLayout);
+        catalogPanelLayout.setHorizontalGroup(
+            catalogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(catalogPanelLayout.createSequentialGroup()
                 .addGap(21, 21, 21)
-                .addGroup(servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                .addGroup(catalogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel7)
                     .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 845, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(servicesPanelLayout.createSequentialGroup()
+                    .addGroup(catalogPanelLayout.createSequentialGroup()
                         .addComponent(addProductServiceButton, javax.swing.GroupLayout.PREFERRED_SIZE, 213, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                         .addComponent(editProductServiceButton, javax.swing.GroupLayout.PREFERRED_SIZE, 213, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(26, Short.MAX_VALUE))
+                .addContainerGap(28, Short.MAX_VALUE))
         );
-        servicesPanelLayout.setVerticalGroup(
-            servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(servicesPanelLayout.createSequentialGroup()
-                .addContainerGap(23, Short.MAX_VALUE)
+        catalogPanelLayout.setVerticalGroup(
+            catalogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(catalogPanelLayout.createSequentialGroup()
+                .addGap(21, 21, 21)
                 .addComponent(jLabel7)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(servicesPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                .addGap(18, 18, 18)
+                .addGroup(catalogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(addProductServiceButton)
                     .addComponent(editProductServiceButton))
                 .addGap(18, 18, 18)
-                .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 548, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(26, 26, 26))
+                .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 563, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap())
         );
 
-        mainPanel.add(servicesPanel, "card5");
+        mainPanel.add(catalogPanel, "card5");
 
-        jLabel8.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        jLabel8.setFont(new java.awt.Font("Poppins", 1, 24)); // NOI18N
+        jLabel8.setForeground(new java.awt.Color(20, 6, 10));
         jLabel8.setText("ACTIVITY LOG");
 
+        activityLogTable.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
         activityLogTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
                 {null, null, null, null, null, null},
@@ -1202,31 +1970,79 @@ addTableDoubleClickActions();
         });
         jScrollPane5.setViewportView(activityLogTable);
 
+        activityStartDateChooser.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+
+        jLabel10.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        jLabel10.setText("START DATE");
+
+        jLabel11.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        jLabel11.setText("END DATE");
+
+        activityEndDateChooser.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+
+        userComboBox.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        userComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
+
+        jLabel12.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        jLabel12.setText("USER");
+
+        generateLogButton.setBackground(new java.awt.Color(27, 25, 24));
+        generateLogButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        generateLogButton.setForeground(new java.awt.Color(255, 255, 255));
+        generateLogButton.setText("Generate Log");
+        generateLogButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        generateLogButton.addActionListener(this::generateLogButtonActionPerformed);
+
+        resetLogButton.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        resetLogButton.setText("Reset");
+        resetLogButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+
         javax.swing.GroupLayout activityLogPanelLayout = new javax.swing.GroupLayout(activityLogPanel);
         activityLogPanel.setLayout(activityLogPanelLayout);
         activityLogPanelLayout.setHorizontalGroup(
             activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(activityLogPanelLayout.createSequentialGroup()
-                .addGap(23, 23, 23)
-                .addComponent(jLabel8)
-                .addContainerGap(708, Short.MAX_VALUE))
-            .addGroup(activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                .addGroup(activityLogPanelLayout.createSequentialGroup()
-                    .addGap(23, 23, 23)
-                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 845, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addContainerGap(24, Short.MAX_VALUE)))
+                .addGap(21, 21, 21)
+                .addGroup(activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                        .addComponent(jLabel8, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(activityStartDateChooser, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(jLabel10)
+                        .addComponent(jLabel11)
+                        .addComponent(activityEndDateChooser, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(userComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 166, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel12)
+                    .addComponent(generateLogButton)
+                    .addComponent(resetLogButton))
+                .addGap(21, 21, 21)
+                .addComponent(jScrollPane5, javax.swing.GroupLayout.DEFAULT_SIZE, 663, Short.MAX_VALUE)
+                .addGap(23, 23, 23))
         );
         activityLogPanelLayout.setVerticalGroup(
             activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(activityLogPanelLayout.createSequentialGroup()
                 .addGap(21, 21, 21)
-                .addComponent(jLabel8)
-                .addContainerGap(629, Short.MAX_VALUE))
-            .addGroup(activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                .addGroup(activityLogPanelLayout.createSequentialGroup()
-                    .addGap(67, 67, 67)
-                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 589, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addContainerGap(26, Short.MAX_VALUE)))
+                .addGroup(activityLogPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 647, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(activityLogPanelLayout.createSequentialGroup()
+                        .addComponent(jLabel8)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jLabel10)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(activityStartDateChooser, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jLabel11)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(activityEndDateChooser, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jLabel12)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(userComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(43, 43, 43)
+                        .addComponent(generateLogButton)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(resetLogButton)))
+                .addContainerGap(35, Short.MAX_VALUE))
         );
 
         mainPanel.add(activityLogPanel, "card6");
@@ -1250,7 +2066,7 @@ addTableDoubleClickActions();
     }// </editor-fold>//GEN-END:initComponents
 
     private void dashboardButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButtonActionPerformed
- loadOrders();
+
     cl.show(mainPanel, "dashboard");      
     }//GEN-LAST:event_dashboardButtonActionPerformed
 
@@ -1283,10 +2099,10 @@ headerPanel.setBackground(Color.WHITE);
 headerPanel.setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
 
 JLabel titleLabel = new JLabel("Create Order");
-titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
+titleLabel.setFont(new Font("Poppins", Font.BOLD, 22));
 
 JLabel subtitleLabel = new JLabel("Add customer details, delivery, payment, and order items.");
-subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+subtitleLabel.setFont(new Font("Poppins", Font.PLAIN, 12));
 subtitleLabel.setForeground(new Color(100, 100, 100));
 
 JPanel titlePanel = new JPanel(new GridLayout(0, 1));
@@ -1296,9 +2112,13 @@ titlePanel.add(subtitleLabel);
 
 headerPanel.add(titlePanel, BorderLayout.WEST);
 
-JPanel formPanel = new JPanel(new GridLayout(0, 2, 10, 8));
-formPanel.setBackground(Color.WHITE);
-formPanel.setBorder(BorderFactory.createEmptyBorder(0, 22, 14, 22));
+JPanel customerPanel = new JPanel(new GridLayout(0, 2, 10, 8));
+customerPanel.setBackground(Color.WHITE);
+customerPanel.setBorder(BorderFactory.createEmptyBorder(0, 22, 10, 22));
+
+JPanel orderDetailsPanel = new JPanel(new GridLayout(0, 2, 10, 8));
+orderDetailsPanel.setBackground(Color.WHITE);
+orderDetailsPanel.setBorder(BorderFactory.createEmptyBorder(12, 22, 0, 22));
 
 JTextField customerNameField = new JTextField();
 
@@ -1311,7 +2131,7 @@ JComboBox<String> paymentBox = new JComboBox<>(payments);
 String[] deliveries = {"Pickup", "Meetup", "J&T", "Flash", "LBC", "Shopee", "Lazada", "TikTok"};
 JComboBox<String> deliveryBox = new JComboBox<>(deliveries);
 
-String[] statuses = {"Pending", "Processing", "Completed", "Cancelled"};
+String[] statuses = {"Pending", "Processing", "Completed"};
 JComboBox<String> statusBox = new JComboBox<>(statuses);
 
 platformBox.addActionListener(e -> {
@@ -1326,16 +2146,16 @@ platformBox.addActionListener(e -> {
     }
 });
 
-formPanel.add(new JLabel("Customer Name"));
-formPanel.add(customerNameField);
-formPanel.add(new JLabel("Platform"));
-formPanel.add(platformBox);
-formPanel.add(new JLabel("Payment Method"));
-formPanel.add(paymentBox);
-formPanel.add(new JLabel("Delivery Method"));
-formPanel.add(deliveryBox);
-formPanel.add(new JLabel("Status"));
-formPanel.add(statusBox);
+customerPanel.add(new JLabel("Customer Name"));
+customerPanel.add(customerNameField);
+orderDetailsPanel.add(new JLabel("Platform"));
+orderDetailsPanel.add(platformBox);
+orderDetailsPanel.add(new JLabel("Payment Method"));
+orderDetailsPanel.add(paymentBox);
+orderDetailsPanel.add(new JLabel("Delivery Method"));
+orderDetailsPanel.add(deliveryBox);
+orderDetailsPanel.add(new JLabel("Status"));
+orderDetailsPanel.add(statusBox);
 
 DefaultTableModel itemModel = new DefaultTableModel(
     new Object[]{"Product / Service", "Price", "Quantity", "Remove"}, 0
@@ -1376,8 +2196,18 @@ JScrollPane itemScroll = new JScrollPane(itemTable);
 itemScroll.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 22));
 
 JButton addItemButton = new JButton("+ Add Item");
+JPanel itemButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+itemButtonPanel.setBackground(Color.WHITE);
+itemButtonPanel.setBorder(BorderFactory.createEmptyBorder(8, 22, 0, 22));
+itemButtonPanel.add(addItemButton);
+
+JPanel itemPanel = new JPanel(new BorderLayout());
+itemPanel.setBackground(Color.WHITE);
+itemPanel.add(itemScroll, BorderLayout.CENTER);
+itemPanel.add(itemButtonPanel, BorderLayout.SOUTH);
+
 JLabel totalLabel = new JLabel("Total: PHP 0.00");
-totalLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+totalLabel.setFont(new Font("Poppins", Font.BOLD, 14));
 
 JButton saveButton = new JButton("Save Order");
 JButton cancelButton = new JButton("Cancel");
@@ -1508,6 +2338,7 @@ saveButton.addActionListener(e -> {
 
         loadOrders();
         loadCatalog();
+        loadDashboard();
 
     } catch (NumberFormatException ex) {
         JOptionPane.showMessageDialog(dialog, "Price and quantity must be valid numbers.");
@@ -1523,7 +2354,6 @@ footerPanel.setBorder(BorderFactory.createEmptyBorder(14, 22, 18, 22));
 
 JPanel leftFooter = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
 leftFooter.setBackground(Color.WHITE);
-leftFooter.add(addItemButton);
 
 JPanel rightFooter = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 rightFooter.setBackground(Color.WHITE);
@@ -1536,178 +2366,110 @@ footerPanel.add(rightFooter, BorderLayout.EAST);
 
 JPanel centerPanel = new JPanel(new BorderLayout());
 centerPanel.setBackground(Color.WHITE);
-centerPanel.add(formPanel, BorderLayout.NORTH);
-centerPanel.add(itemScroll, BorderLayout.CENTER);
+centerPanel.add(customerPanel, BorderLayout.NORTH);
+centerPanel.add(itemPanel, BorderLayout.CENTER);
+centerPanel.add(orderDetailsPanel, BorderLayout.SOUTH);
 
 dialog.add(headerPanel, BorderLayout.NORTH);
 dialog.add(centerPanel, BorderLayout.CENTER);
 dialog.add(footerPanel, BorderLayout.SOUTH);
 
+styleFlatComponents(dialog);
 dialog.setVisible(true);
     }//GEN-LAST:event_createOrderButtonActionPerformed
 
-    private void changePasswordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changePasswordButtonActionPerformed
-    try {
-        String newPass = JOptionPane.showInputDialog("Enter new password:");
-        if (newPass == null || newPass.trim().isEmpty()) return;
+    private boolean showAddAccountDialog() {
+        if (!isAdmin()) {
+            JOptionPane.showMessageDialog(this, "Only admins can add accounts.");
+            return true;
+        }
 
-        Connection conn = DBConnection.getConnection();
+        JTextField nameField = new JTextField();
+        JTextField usernameField = new JTextField();
+        JPasswordField passwordField = new JPasswordField();
+        JPasswordField confirmPasswordField = new JPasswordField();
+        JComboBox<String> roleBox = new JComboBox<>(new String[]{"admin", "employee"});
+        JComboBox<String> statusBox = new JComboBox<>(new String[]{"active", "inactive"});
 
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET password=? WHERE username=?"
+        JPanel panel = new JPanel(new GridLayout(0, 1, 6, 6));
+        panel.add(new JLabel("Name:"));
+        panel.add(nameField);
+        panel.add(new JLabel("Username:"));
+        panel.add(usernameField);
+        panel.add(new JLabel("Password:"));
+        panel.add(passwordField);
+        panel.add(new JLabel("Confirm Password:"));
+        panel.add(confirmPasswordField);
+        panel.add(new JLabel("Role:"));
+        panel.add(roleBox);
+        panel.add(new JLabel("Status:"));
+        panel.add(statusBox);
+
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            panel,
+            "Add Account",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
         );
 
-        ps.setString(1, hashPassword(newPass));
-        ps.setString(2, loggedUsername);
+        if (result != JOptionPane.OK_OPTION) return true;
 
-        ps.executeUpdate();
-        
-        addLog("CHANGE_PASSWORD", "Changed own password");
-
-        loadCurrentUser();
-
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-    }//GEN-LAST:event_changePasswordButtonActionPerformed
-
-    private void changeUsernameButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeUsernameButtonActionPerformed
         try {
-        String newUsername = JOptionPane.showInputDialog("Enter new username:");
-        if (newUsername == null || newUsername.trim().isEmpty()) return;
+            String name = nameField.getText().trim();
+            String username = usernameField.getText().trim();
+            String password = new String(passwordField.getPassword()).trim();
+            String confirmPassword = new String(confirmPasswordField.getPassword()).trim();
+            String role = (String) roleBox.getSelectedItem();
+            String status = (String) statusBox.getSelectedItem();
 
-        Connection conn = DBConnection.getConnection();
+            if (name.isEmpty() || username.isEmpty() || password.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Name, username, and password are required.");
+                return true;
+            }
 
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET username=? WHERE username=?"
-        );
+            if (!password.equals(confirmPassword)) {
+                JOptionPane.showMessageDialog(this, "Passwords do not match.");
+                return true;
+            }
 
-        ps.setString(1, newUsername);
-        ps.setString(2, loggedUsername);
-String oldUsername = loggedUsername;
-        ps.executeUpdate();
-addLog("CHANGE_USERNAME", "Changed username from " + oldUsername + " to " + newUsername);
-        loggedUsername = newUsername;
-        loadCurrentUser();
+            Connection conn = DBConnection.getConnection();
 
-    } catch (Exception e) {
-        e.printStackTrace();
+            PreparedStatement checkPs = conn.prepareStatement(
+                "SELECT COUNT(*) FROM users WHERE username=?"
+            );
+            checkPs.setString(1, username);
+            ResultSet checkRs = checkPs.executeQuery();
+
+            if (checkRs.next() && checkRs.getInt(1) > 0) {
+                JOptionPane.showMessageDialog(this, "Username is already taken.");
+                return true;
+            }
+
+            PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO users (name, username, password, role, status) VALUES (?, ?, ?, ?, ?)"
+            );
+
+            ps.setString(1, name);
+            ps.setString(2, username);
+            ps.setString(3, password);
+            ps.setString(4, role);
+            ps.setString(5, status);
+            ps.executeUpdate();
+
+            addLog("ADD_ACCOUNT", "Added account: " + username + " as " + role);
+            JOptionPane.showMessageDialog(this, "Account added successfully!");
+            loadAllUsers();
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Failed to add account.");
+        }
+
+        return true;
     }
-    }//GEN-LAST:event_changeUsernameButtonActionPerformed
-
-    private void changeRoleButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeRoleButtonActionPerformed
- if (!isAdmin()) return;
-
-    int row = allUsersTable.getSelectedRow();
-    if (row == -1) {
-        JOptionPane.showMessageDialog(this, "Select a user first.");
-        return;
-    }
-
-    int id = (int) allUsersTable.getValueAt(row, 0);
-    String currentRole = allUsersTable.getValueAt(row, 2).toString();
-
-    String[] roles = {"admin", "employee"};
-    JComboBox<String> roleBox = new JComboBox<>(roles);
-
-    int choice = JOptionPane.showConfirmDialog(
-            this,
-            roleBox,
-            "Select New Role",
-            JOptionPane.OK_CANCEL_OPTION
-    );
-
-    if (choice != JOptionPane.OK_OPTION) return;
-
-    String newRole = (String) roleBox.getSelectedItem();
-
-    // ❗ prevent last admin from being demoted
-    if (currentRole.equalsIgnoreCase("admin")
-            && newRole.equalsIgnoreCase("employee")
-            && !hasMoreThanOneActiveAdmin()) {
-
-        JOptionPane.showMessageDialog(this, "Cannot demote the last active admin.");
-        return;
-    }
-
-    try {
-        Connection conn = DBConnection.getConnection();
-
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET role=? WHERE id=?"
-        );
-
-        ps.setString(1, newRole);
-        ps.setInt(2, id);
-
-        ps.executeUpdate();
-        addLog("CHANGE_USER_ROLE", "Changed user ID " + id + " role from " + currentRole + " to " + newRole);
-
-        loadAllUsers();
-
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-    }//GEN-LAST:event_changeRoleButtonActionPerformed
-
-    private void changeStatusButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeStatusButtonActionPerformed
-if (!isAdmin()) return;
-
-    int row = allUsersTable.getSelectedRow();
-    if (row == -1) {
-        JOptionPane.showMessageDialog(this, "Select a user first.");
-        return;
-    }
-
-    int id = (int) allUsersTable.getValueAt(row, 0);
-    String role = allUsersTable.getValueAt(row, 2).toString();
-    String currentStatus = allUsersTable.getValueAt(row, 3).toString();
-
-    String[] statuses = {"active", "inactive"};
-    JComboBox<String> statusBox = new JComboBox<>(statuses);
-
-    int choice = JOptionPane.showConfirmDialog(
-            this,
-            statusBox,
-            "Select New Status",
-            JOptionPane.OK_CANCEL_OPTION
-    );
-
-    if (choice != JOptionPane.OK_OPTION) return;
-
-    String newStatus = (String) statusBox.getSelectedItem();
-
-    // ❗ prevent last active admin from being deactivated
-    if (role.equalsIgnoreCase("admin")
-            && currentStatus.equalsIgnoreCase("active")
-            && newStatus.equalsIgnoreCase("inactive")
-            && !hasMoreThanOneActiveAdmin()) {
-
-        JOptionPane.showMessageDialog(this, "Cannot deactivate the last active admin.");
-        return;
-    }
-
-    try {
-        Connection conn = DBConnection.getConnection();
-
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET status=? WHERE id=?"
-        );
-
-        ps.setString(1, newStatus);
-        ps.setInt(2, id);
-
-        ps.executeUpdate();
-        addLog("CHANGE_USER_STATUS", "Changed user ID " + id + " status from " + currentStatus + " to " + newStatus);
-
-        loadAllUsers();
-
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-    }//GEN-LAST:event_changeStatusButtonActionPerformed
 
     private void addAccountButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addAccountButtonActionPerformed
+    if (showAddAccountDialog()) return;
  if (!isAdmin()) {
         JOptionPane.showMessageDialog(this, "Only admins can add accounts.");
         return;
@@ -1776,10 +2538,10 @@ String role = (String) roleBox.getSelectedItem();
     }
     }//GEN-LAST:event_addAccountButtonActionPerformed
 
-    private void servicesButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_servicesButtonActionPerformed
+    private void catalogButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_catalogButtonActionPerformed
         loadCatalog();
     cl.show(mainPanel, "card5");
-    }//GEN-LAST:event_servicesButtonActionPerformed
+    }//GEN-LAST:event_catalogButtonActionPerformed
 
     private void updateStatusButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_updateStatusButtonActionPerformed
 int row = jTable1.getSelectedRow();
@@ -1789,14 +2551,14 @@ int row = jTable1.getSelectedRow();
         return;
     }
 
-    int orderId = Integer.parseInt(jTable1.getValueAt(row, 0).toString());
+    int orderId = parseOrderCode(jTable1.getValueAt(row, 0));
+    String currentStatus = String.valueOf(jTable1.getValueAt(row, 7));
 
-    String[] statuses = {"Pending", "Processing", "Completed", "Cancelled"};
+    String[] statuses = {"Pending", "Processing", "Completed"};
     JComboBox<String> statusBox = new JComboBox<>(statuses);
 
-    Object currentStatus = jTable1.getValueAt(row, 7);
-    if (currentStatus != null) {
-        statusBox.setSelectedItem(currentStatus.toString());
+    if (!currentStatus.equalsIgnoreCase("Cancelled")) {
+        statusBox.setSelectedItem(currentStatus);
     }
 
     int choice = JOptionPane.showConfirmDialog(
@@ -1810,8 +2572,43 @@ int row = jTable1.getSelectedRow();
 
     String newStatus = (String) statusBox.getSelectedItem();
 
+    Connection conn = null;
+
     try {
-        Connection conn = DBConnection.getConnection();
+        conn = DBConnection.getConnection();
+        conn.setAutoCommit(false);
+
+        if (currentStatus.equalsIgnoreCase("Cancelled")
+                && !newStatus.equalsIgnoreCase("Cancelled")) {
+
+            PreparedStatement itemsPs = conn.prepareStatement(
+                "SELECT item_id, item_name, quantity FROM order_items " +
+                "WHERE order_id=? AND item_type='product' AND item_id IS NOT NULL"
+            );
+
+            itemsPs.setInt(1, orderId);
+            ResultSet itemsRs = itemsPs.executeQuery();
+
+            PreparedStatement stockPs = conn.prepareStatement(
+                "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?"
+            );
+
+            while (itemsRs.next()) {
+                int itemId = itemsRs.getInt("item_id");
+                int quantity = itemsRs.getInt("quantity");
+                String itemName = itemsRs.getString("item_name");
+
+                stockPs.setInt(1, quantity);
+                stockPs.setInt(2, itemId);
+                stockPs.setInt(3, quantity);
+
+                int updated = stockPs.executeUpdate();
+
+                if (updated == 0) {
+                    throw new SQLException("Not enough stock for " + itemName);
+                }
+            }
+        }
 
         PreparedStatement ps = conn.prepareStatement(
             "UPDATE orders SET status=?, date_completed = CASE WHEN ? = 'Completed' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id=?"
@@ -1822,15 +2619,31 @@ int row = jTable1.getSelectedRow();
         ps.setInt(3, orderId);
 
         ps.executeUpdate();
-        
-        addLog("UPDATE_ORDER_STATUS", "Updated order #" + orderId + " to " + newStatus);
+
+        conn.commit();
+
+        addLog("UPDATE_ORDER_STATUS", "Updated order " + formatOrderCode(orderId) + " from " + currentStatus + " to " + newStatus);
 
         JOptionPane.showMessageDialog(this, "Order status updated.");
         loadOrders();
+        loadCatalog();
+        loadDashboard();
 
     } catch (Exception e) {
+        try {
+            if (conn != null) conn.rollback();
+        } catch (Exception rollbackError) {
+            rollbackError.printStackTrace();
+        }
+
         e.printStackTrace();
-        JOptionPane.showMessageDialog(this, "Failed to update status.");
+        JOptionPane.showMessageDialog(this, e.getMessage());
+    } finally {
+        try {
+            if (conn != null) conn.setAutoCommit(true);
+        } catch (Exception autoCommitError) {
+            autoCommitError.printStackTrace();
+        }
     }
     }//GEN-LAST:event_updateStatusButtonActionPerformed
 
@@ -1842,7 +2655,7 @@ int row = jTable1.getSelectedRow();
         return;
     }
 
-    int orderId = Integer.parseInt(jTable1.getValueAt(row, 0).toString());
+    int orderId = parseOrderCode(jTable1.getValueAt(row, 0));
 
     Object currentStatus = jTable1.getValueAt(row, 7);
     if (currentStatus != null && currentStatus.toString().equalsIgnoreCase("Cancelled")) {
@@ -1892,12 +2705,12 @@ int row = jTable1.getSelectedRow();
 
         conn.commit();
         
-        addLog("CANCEL_ORDER", "Cancelled order #" + orderId + " and returned stock");
+        addLog("CANCEL_ORDER", "Cancelled order " + formatOrderCode(orderId) + " and returned stock");
 
         JOptionPane.showMessageDialog(this, "Order cancelled and stock returned.");
         loadOrders();
         loadCatalog();
-
+loadDashboard();
     } catch (Exception e) {
         try {
             if (conn != null) conn.rollback();
@@ -1924,7 +2737,7 @@ int row = jTable1.getSelectedRow();
         return;
     }
 
-    int orderId = Integer.parseInt(jTable1.getValueAt(row, 0).toString());
+    int orderId = parseOrderCode(jTable1.getValueAt(row, 0));
     String status = String.valueOf(jTable1.getValueAt(row, 7));
 
     Color statusBg;
@@ -1953,14 +2766,14 @@ int row = jTable1.getSelectedRow();
     headerPanel.setBorder(BorderFactory.createEmptyBorder(18, 20, 14, 20));
     headerPanel.setBackground(Color.WHITE);
 
-    JLabel titleLabel = new JLabel("Order #" + orderId);
-    titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
+    JLabel titleLabel = new JLabel("Order " + formatOrderCode(orderId));
+    titleLabel.setFont(new Font("Poppins", Font.BOLD, 22));
 
     JLabel statusLabel = new JLabel(status);
     statusLabel.setOpaque(true);
     statusLabel.setBackground(statusBg);
     statusLabel.setForeground(statusFg);
-    statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+    statusLabel.setFont(new Font("Poppins", Font.BOLD, 12));
     statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
     statusLabel.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
 
@@ -2035,12 +2848,17 @@ addDetailRow(infoPanel, gbc, 6, "Date Completed", jTable1.getValueAt(row, 9));
     JButton closeButton = new JButton("Close");
     closeButton.addActionListener(e -> dialog.dispose());
 
+    JButton printReceiptButton = new JButton("Print Receipt");
+    printReceiptButton.addActionListener(e -> showReceiptDialog(orderId, row, itemModel));
+
+    footerPanel.add(printReceiptButton);
     footerPanel.add(closeButton);
 
     dialog.add(headerPanel, BorderLayout.NORTH);
     dialog.add(centerPanel, BorderLayout.CENTER);
     dialog.add(footerPanel, BorderLayout.SOUTH);
 
+    styleFlatComponents(dialog);
     dialog.setVisible(true);
     }//GEN-LAST:event_viewDetailsButtonActionPerformed
 
@@ -2051,8 +2869,15 @@ int row = jTable1.getSelectedRow();
         JOptionPane.showMessageDialog(this, "Select an order first.");
         return;
     }
+    
+    String currentStatus = String.valueOf(jTable1.getValueAt(row, 7));
 
-    int orderId = Integer.parseInt(jTable1.getValueAt(row, 0).toString());
+if (currentStatus.equalsIgnoreCase("Cancelled")) {
+    JOptionPane.showMessageDialog(this, "Cancelled orders cannot be edited. Change the status first.");
+    return;
+}
+
+    int orderId = parseOrderCode(jTable1.getValueAt(row, 0));
     java.util.List<OrderItem> items = loadOrderItems();
 
     JDialog dialog = new JDialog(this, "Edit Order", true);
@@ -2065,11 +2890,11 @@ int row = jTable1.getSelectedRow();
     headerPanel.setBackground(Color.WHITE);
     headerPanel.setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
 
-    JLabel titleLabel = new JLabel("Edit Order #" + orderId);
-    titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
+    JLabel titleLabel = new JLabel("Edit Order " + formatOrderCode(orderId));
+    titleLabel.setFont(new Font("Poppins", Font.BOLD, 22));
 
     JLabel subtitleLabel = new JLabel("Update customer details, delivery, payment, and order items.");
-    subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+    subtitleLabel.setFont(new Font("Poppins", Font.PLAIN, 12));
     subtitleLabel.setForeground(new Color(100, 100, 100));
 
     JPanel titlePanel = new JPanel(new GridLayout(0, 1));
@@ -2079,9 +2904,13 @@ int row = jTable1.getSelectedRow();
 
     headerPanel.add(titlePanel, BorderLayout.WEST);
 
-    JPanel formPanel = new JPanel(new GridLayout(0, 2, 10, 8));
-    formPanel.setBackground(Color.WHITE);
-    formPanel.setBorder(BorderFactory.createEmptyBorder(0, 22, 14, 22));
+    JPanel customerPanel = new JPanel(new GridLayout(0, 2, 10, 8));
+    customerPanel.setBackground(Color.WHITE);
+    customerPanel.setBorder(BorderFactory.createEmptyBorder(0, 22, 10, 22));
+
+    JPanel orderDetailsPanel = new JPanel(new GridLayout(0, 2, 10, 8));
+    orderDetailsPanel.setBackground(Color.WHITE);
+    orderDetailsPanel.setBorder(BorderFactory.createEmptyBorder(12, 22, 0, 22));
 
     JTextField customerNameField = new JTextField(jTable1.getValueAt(row, 1).toString());
 
@@ -2118,16 +2947,16 @@ int row = jTable1.getSelectedRow();
         deliveryBox.setEnabled(false);
     }
 
-    formPanel.add(new JLabel("Customer Name"));
-    formPanel.add(customerNameField);
-    formPanel.add(new JLabel("Platform"));
-    formPanel.add(platformBox);
-    formPanel.add(new JLabel("Payment Method"));
-    formPanel.add(paymentBox);
-    formPanel.add(new JLabel("Delivery Method"));
-    formPanel.add(deliveryBox);
-    formPanel.add(new JLabel("Status"));
-    formPanel.add(statusBox);
+    customerPanel.add(new JLabel("Customer Name"));
+    customerPanel.add(customerNameField);
+    orderDetailsPanel.add(new JLabel("Platform"));
+    orderDetailsPanel.add(platformBox);
+    orderDetailsPanel.add(new JLabel("Payment Method"));
+    orderDetailsPanel.add(paymentBox);
+    orderDetailsPanel.add(new JLabel("Delivery Method"));
+    orderDetailsPanel.add(deliveryBox);
+    orderDetailsPanel.add(new JLabel("Status"));
+    orderDetailsPanel.add(statusBox);
 
     DefaultTableModel itemModel = new DefaultTableModel(
         new Object[]{"Product / Service", "Price", "Quantity", "Remove"}, 0
@@ -2209,8 +3038,18 @@ int row = jTable1.getSelectedRow();
     itemScroll.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 22));
 
     JButton addItemButton = new JButton("+ Add Item");
+    JPanel itemButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    itemButtonPanel.setBackground(Color.WHITE);
+    itemButtonPanel.setBorder(BorderFactory.createEmptyBorder(8, 22, 0, 22));
+    itemButtonPanel.add(addItemButton);
+
+    JPanel itemPanel = new JPanel(new BorderLayout());
+    itemPanel.setBackground(Color.WHITE);
+    itemPanel.add(itemScroll, BorderLayout.CENTER);
+    itemPanel.add(itemButtonPanel, BorderLayout.SOUTH);
+
     JLabel totalLabel = new JLabel("Total: PHP 0.00");
-    totalLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+    totalLabel.setFont(new Font("Poppins", Font.BOLD, 14));
 
     JButton saveButton = new JButton("Save Changes");
     JButton cancelButton = new JButton("Cancel");
@@ -2316,7 +3155,7 @@ int row = jTable1.getSelectedRow();
 
             updateOrderWithItems(orderId, customerName, lines, platform, paymentMethod, deliveryMethod, status);
             
-            addLog("EDIT_ORDER", "Edited order #" + orderId + " for " + customerName);
+            addLog("EDIT_ORDER", "Edited order " + formatOrderCode(orderId) + " for " + customerName);
 
             JOptionPane.showMessageDialog(dialog, "Order updated.");
 
@@ -2324,7 +3163,7 @@ int row = jTable1.getSelectedRow();
 
             loadOrders();
             loadCatalog();
-
+loadDashboard();
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(dialog, "Price and quantity must be valid numbers.");
         } catch (Exception ex) {
@@ -2339,7 +3178,6 @@ int row = jTable1.getSelectedRow();
 
     JPanel leftFooter = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
     leftFooter.setBackground(Color.WHITE);
-    leftFooter.add(addItemButton);
 
     JPanel rightFooter = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
     rightFooter.setBackground(Color.WHITE);
@@ -2352,14 +3190,18 @@ int row = jTable1.getSelectedRow();
 
     JPanel centerPanel = new JPanel(new BorderLayout());
     centerPanel.setBackground(Color.WHITE);
-    centerPanel.add(formPanel, BorderLayout.NORTH);
-    centerPanel.add(itemScroll, BorderLayout.CENTER);
+    centerPanel.add(customerPanel, BorderLayout.NORTH);
+    centerPanel.add(itemPanel, BorderLayout.CENTER);
+    centerPanel.add(orderDetailsPanel, BorderLayout.SOUTH);
 
     dialog.add(headerPanel, BorderLayout.NORTH);
     dialog.add(centerPanel, BorderLayout.CENTER);
     dialog.add(footerPanel, BorderLayout.SOUTH);
 
+    styleFlatComponents(dialog);
     dialog.setVisible(true);
+    
+    
     }//GEN-LAST:event_editOrderButtonActionPerformed
 
     private void addProductServiceButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addProductServiceButtonActionPerformed
@@ -2561,173 +3403,205 @@ ps.setString(4, status);
     }//GEN-LAST:event_editProductServiceButtonActionPerformed
 
     private void activityLogButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_activityLogButtonActionPerformed
-            loadActivityLogs();
+    loadActivityUsers();
+    loadActivityLogs();
     cl.show(mainPanel, "card6");
     }//GEN-LAST:event_activityLogButtonActionPerformed
 
-    private void changePasswordAllAccountsButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changePasswordAllAccountsButtonActionPerformed
-  if (!isAdmin()) {
-        JOptionPane.showMessageDialog(this, "Only admins can reset passwords.");
-        return;
+    private boolean showEditAccountDialog() {
+    if (!isAdmin()) {
+        JOptionPane.showMessageDialog(this, "Only admins can edit accounts.");
+        return true;
     }
 
     int row = allUsersTable.getSelectedRow();
 
     if (row == -1) {
         JOptionPane.showMessageDialog(this, "Select a user first.");
-        return;
+        return true;
     }
 
     int id = Integer.parseInt(allUsersTable.getValueAt(row, 0).toString());
-    String name = allUsersTable.getValueAt(row, 1).toString();
-    String role = allUsersTable.getValueAt(row, 2).toString();
+    String currentName = String.valueOf(allUsersTable.getValueAt(row, 1));
+    String currentUsername = String.valueOf(allUsersTable.getValueAt(row, 2));
+    String currentRole = String.valueOf(allUsersTable.getValueAt(row, 3));
+    String currentStatus = String.valueOf(allUsersTable.getValueAt(row, 4));
 
+    JTextField nameField = new JTextField(currentName);
+    JTextField usernameField = new JTextField(currentUsername);
     JPasswordField passwordField = new JPasswordField();
     JPasswordField confirmPasswordField = new JPasswordField();
 
-    JPanel panel = new JPanel(new GridLayout(0, 1, 5, 5));
-    panel.add(new JLabel("New password for " + name + ":"));
+    JComboBox<String> roleBox = new JComboBox<>(new String[]{"admin", "employee"});
+    JComboBox<String> statusBox = new JComboBox<>(new String[]{"active", "inactive"});
+
+    roleBox.setSelectedItem(currentRole);
+    statusBox.setSelectedItem(currentStatus);
+
+    JPanel panel = new JPanel(new GridLayout(0, 1, 6, 6));
+    panel.add(new JLabel("Name:"));
+    panel.add(nameField);
+    panel.add(new JLabel("Username:"));
+    panel.add(usernameField);
+    panel.add(new JLabel("New Password (leave blank to keep current):"));
     panel.add(passwordField);
-    panel.add(new JLabel("Confirm new password:"));
+    panel.add(new JLabel("Confirm New Password:"));
     panel.add(confirmPasswordField);
+    panel.add(new JLabel("Role:"));
+    panel.add(roleBox);
+    panel.add(new JLabel("Status:"));
+    panel.add(statusBox);
 
     int result = JOptionPane.showConfirmDialog(
         this,
         panel,
-        "Reset User Password",
+        "Edit Account",
         JOptionPane.OK_CANCEL_OPTION,
         JOptionPane.PLAIN_MESSAGE
     );
 
-    if (result != JOptionPane.OK_OPTION) return;
-
-    String newPassword = new String(passwordField.getPassword()).trim();
-    String confirmPassword = new String(confirmPasswordField.getPassword()).trim();
-
-    if (newPassword.isEmpty()) {
-        JOptionPane.showMessageDialog(this, "Password cannot be empty.");
-        return;
-    }
-
-    if (!newPassword.equals(confirmPassword)) {
-        JOptionPane.showMessageDialog(this, "Passwords do not match.");
-        return;
-    }
-
-    int confirm = JOptionPane.showConfirmDialog(
-        this,
-        "Reset password for " + name + "?",
-        "Confirm Password Reset",
-        JOptionPane.YES_NO_OPTION
-    );
-
-    if (confirm != JOptionPane.YES_OPTION) return;
+    if (result != JOptionPane.OK_OPTION) return true;
 
     try {
-        Connection conn = DBConnection.getConnection();
+        String name = nameField.getText().trim();
+        String username = usernameField.getText().trim();
+        String password = new String(passwordField.getPassword()).trim();
+        String confirmPassword = new String(confirmPasswordField.getPassword()).trim();
+        String newRole = (String) roleBox.getSelectedItem();
+        String newStatus = (String) statusBox.getSelectedItem();
 
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET password=? WHERE id=?"
-        );
+        if (name.isEmpty() || username.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Name and username are required.");
+            return true;
+        }
 
-        ps.setString(1, hashPassword(newPassword));
-        ps.setInt(2, id);
+        if (!password.equals(confirmPassword)) {
+            JOptionPane.showMessageDialog(this, "Passwords do not match.");
+            return true;
+        }
 
-        ps.executeUpdate();
+        /*
+         * Prevent the last active admin from being changed to employee
+         * or inactive.
+         */
+        if (isLastActiveAdmin(id)) {
+            boolean changingRoleFromAdmin =
+                    currentRole.equalsIgnoreCase("admin")
+                    && !newRole.equalsIgnoreCase("admin");
 
-        addLog("RESET_PASSWORD", "Reset password for user ID " + id + " (" + name + ", " + role + ")");
+            boolean changingStatusFromActive =
+                    currentStatus.equalsIgnoreCase("active")
+                    && !newStatus.equalsIgnoreCase("active");
 
-        JOptionPane.showMessageDialog(this, "Password reset successfully.");
+            if (changingRoleFromAdmin || changingStatusFromActive) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "The last active admin cannot be changed to employee or inactive."
+                );
+                return true;
+            }
+        }
 
-        loadAllUsers();
+        /*
+         * Optional but recommended:
+         * prevent the currently logged-in user from deactivating their own account.
+         */
+        if (currentUsername.equalsIgnoreCase(loggedUsername)
+                && newStatus.equalsIgnoreCase("inactive")) {
 
-    } catch (Exception e) {
-        e.printStackTrace();
-        JOptionPane.showMessageDialog(this, "Failed to reset password.");
-    }
-    }//GEN-LAST:event_changePasswordAllAccountsButtonActionPerformed
+            JOptionPane.showMessageDialog(
+                this,
+                "You cannot deactivate your own account while logged in."
+            );
+            return true;
+        }
 
-    private void changeUsernameAllAccountsButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeUsernameAllAccountsButtonActionPerformed
-        if (!isAdmin()) {
-        JOptionPane.showMessageDialog(this, "Only admins can change usernames.");
-        return;
-    }
-
-    int row = allUsersTable.getSelectedRow();
-
-    if (row == -1) {
-        JOptionPane.showMessageDialog(this, "Select a user first.");
-        return;
-    }
-
-    int id = Integer.parseInt(allUsersTable.getValueAt(row, 0).toString());
-    String name = allUsersTable.getValueAt(row, 1).toString();
-
-    String newUsername = JOptionPane.showInputDialog(
-        this,
-        "Enter new username for " + name + ":"
-    );
-
-    if (newUsername == null || newUsername.trim().isEmpty()) {
-        return;
-    }
-
-    newUsername = newUsername.trim();
-
-    try {
         Connection conn = DBConnection.getConnection();
 
         PreparedStatement checkPs = conn.prepareStatement(
             "SELECT COUNT(*) FROM users WHERE username=? AND id<>?"
         );
 
-        checkPs.setString(1, newUsername);
+        checkPs.setString(1, username);
         checkPs.setInt(2, id);
 
         ResultSet checkRs = checkPs.executeQuery();
 
         if (checkRs.next() && checkRs.getInt(1) > 0) {
             JOptionPane.showMessageDialog(this, "Username is already taken.");
-            return;
+            return true;
         }
 
-        PreparedStatement oldPs = conn.prepareStatement(
-            "SELECT username FROM users WHERE id=?"
-        );
+        PreparedStatement ps;
 
-        oldPs.setInt(1, id);
+        if (password.isEmpty()) {
+            ps = conn.prepareStatement(
+                "UPDATE users SET name=?, username=?, role=?, status=? WHERE id=?"
+            );
 
-        ResultSet oldRs = oldPs.executeQuery();
-        String oldUsername = "";
+            ps.setString(1, name);
+            ps.setString(2, username);
+            ps.setString(3, newRole);
+            ps.setString(4, newStatus);
+            ps.setInt(5, id);
+        } else {
+            ps = conn.prepareStatement(
+                "UPDATE users SET name=?, username=?, password=?, role=?, status=? WHERE id=?"
+            );
 
-        if (oldRs.next()) {
-            oldUsername = oldRs.getString("username");
+            ps.setString(1, name);
+            ps.setString(2, username);
+            ps.setString(3, password);
+            ps.setString(4, newRole);
+            ps.setString(5, newStatus);
+            ps.setInt(6, id);
         }
-
-        PreparedStatement ps = conn.prepareStatement(
-            "UPDATE users SET username=? WHERE id=?"
-        );
-
-        ps.setString(1, newUsername);
-        ps.setInt(2, id);
 
         ps.executeUpdate();
 
-        addLog(
-            "CHANGE_USER_USERNAME",
-            "Changed user ID " + id + " username from " + oldUsername + " to " + newUsername
-        );
+        if (currentUsername.equalsIgnoreCase(loggedUsername)) {
+            loggedUsername = username;
+            loggedRole = newRole;
+        }
 
-        JOptionPane.showMessageDialog(this, "Username changed successfully.");
+        addLog("EDIT_ACCOUNT", "Edited account: " + username);
+
+        JOptionPane.showMessageDialog(this, "Account updated successfully.");
 
         loadAllUsers();
         loadCurrentUser();
+        loadActivityUsers();
 
     } catch (Exception e) {
         e.printStackTrace();
-        JOptionPane.showMessageDialog(this, "Failed to change username.");
+        JOptionPane.showMessageDialog(this, "Failed to edit account.");
     }
+
+    return true;
+}
+
+
+    private void changeUsernameAllAccountsButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_changeUsernameAllAccountsButtonActionPerformed
+showEditAccountDialog();
     }//GEN-LAST:event_changeUsernameAllAccountsButtonActionPerformed
+
+    private void ordersButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_ordersButtonActionPerformed
+            loadOrders();
+    cl.show(mainPanel, "orders");
+    }//GEN-LAST:event_ordersButtonActionPerformed
+
+    private void dashboardCreateOrderButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardCreateOrderButtonActionPerformed
+    cl.show(mainPanel, "orders");
+    createOrderButton.doClick();
+    }//GEN-LAST:event_dashboardCreateOrderButtonActionPerformed
+
+    private void accountNameButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_accountNameButtonActionPerformed
+    cl.show(mainPanel, "accounts");
+    }//GEN-LAST:event_accountNameButtonActionPerformed
+
+    private void generateLogButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_generateLogButtonActionPerformed
+        loadActivityLogs();
+    }//GEN-LAST:event_generateLogButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -2739,12 +3613,7 @@ ps.setString(4, status);
          * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
          */
         try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
+            javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getCrossPlatformLookAndFeelClassName());
         } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException ex) {
             logger.log(java.util.logging.Level.SEVERE, null, ex);
         }
@@ -2758,36 +3627,56 @@ ps.setString(4, status);
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JButton accountNameButton;
     private javax.swing.JButton accountsButton;
     private javax.swing.JPanel accountsPanel;
+    private com.toedter.calendar.JDateChooser activityEndDateChooser;
     private javax.swing.JButton activityLogButton;
     private javax.swing.JPanel activityLogPanel;
     private javax.swing.JTable activityLogTable;
+    private com.toedter.calendar.JDateChooser activityStartDateChooser;
+    private javax.swing.JLabel actualIdLabel;
+    private javax.swing.JLabel actualNameLabel;
+    private javax.swing.JLabel actualRoleLabel;
+    private javax.swing.JLabel actualUsernameLabel;
+    private javax.swing.JPanel actualsalesAnalysisPanel;
     private javax.swing.JButton addAccountButton;
     private javax.swing.JButton addProductServiceButton;
     private javax.swing.JTable allUsersTable;
     private javax.swing.JButton cancelOrderButton;
+    private javax.swing.JButton catalogButton;
+    private javax.swing.JPanel catalogPanel;
+    private javax.swing.JTextArea catalogStockTextArea;
     private javax.swing.JTable catalogTable;
-    private javax.swing.JButton changePasswordAllAccountsButton;
-    private javax.swing.JButton changePasswordButton;
-    private javax.swing.JButton changeRoleButton;
-    private javax.swing.JButton changeStatusButton;
     private javax.swing.JButton changeUsernameAllAccountsButton;
-    private javax.swing.JButton changeUsernameButton;
+    private javax.swing.JLabel completedLabel;
+    private javax.swing.JLabel completedLabel1;
+    private javax.swing.JLabel completedLabel2;
+    private javax.swing.JLabel completedLabel3;
+    private javax.swing.JLabel completedOrdersNumberLabel;
+    private javax.swing.JPanel completedPanel;
     private javax.swing.JButton createOrderButton;
-    private javax.swing.JTable currentUserTable;
     private javax.swing.JButton dashboardButton;
+    private javax.swing.JButton dashboardCreateOrderButton;
     private javax.swing.JPanel dashboardPanel;
     private javax.swing.JButton editOrderButton;
     private javax.swing.JButton editProductServiceButton;
+    private javax.swing.JButton generateLogButton;
+    private javax.swing.JPanel graphContainerPanel;
+    private javax.swing.JPanel graphContainerPanel1;
+    private javax.swing.JLabel idLabel;
     private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel10;
+    private javax.swing.JLabel jLabel11;
+    private javax.swing.JLabel jLabel12;
     private javax.swing.JLabel jLabel2;
-    private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
     private javax.swing.JLabel jLabel8;
+    private javax.swing.JLabel jLabel9;
+    private javax.swing.JPanel jPanel5;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
@@ -2796,12 +3685,27 @@ ps.setString(4, status);
     private javax.swing.JTable jTable1;
     private javax.swing.JButton logOutButton;
     private javax.swing.JPanel mainPanel;
+    private javax.swing.JLabel nameLabel;
     private javax.swing.JPanel optionPanel;
+    private javax.swing.JButton ordersButton;
+    private javax.swing.JPanel ordersPanel;
+    private javax.swing.JLabel pendingLabel;
+    private javax.swing.JLabel pendingOrdersNumberLabel;
+    private javax.swing.JPanel pendingPanel;
+    private javax.swing.JLabel processingLabel;
+    private javax.swing.JLabel processingOrdersNumberLabel;
+    private javax.swing.JPanel processingPanel;
+    private javax.swing.JButton resetLogButton;
+    private javax.swing.JLabel roleLabel;
     private javax.swing.JButton salesReportButton;
     private javax.swing.JPanel salesReportPanel;
-    private javax.swing.JButton servicesButton;
-    private javax.swing.JPanel servicesPanel;
+    private javax.swing.JLabel totalOrdersLabel4;
+    private javax.swing.JLabel totalOrdersLabel5;
+    private javax.swing.JLabel totalOrdersNumberLabel4;
+    private javax.swing.JPanel totalOrdersPanel4;
     private javax.swing.JButton updateStatusButton;
+    private javax.swing.JComboBox<String> userComboBox;
+    private javax.swing.JLabel usernameLabel;
     private javax.swing.JButton viewDetailsButton;
     // End of variables declaration//GEN-END:variables
 }
